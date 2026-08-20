@@ -1,0 +1,35 @@
+<resources>
+    <string name="app_name">Usage Ring</string>
+    <string name="dashboard">Dashboard</string>
+    <string name="settings">Settings</string>
+    <string name="refresh">Refresh</string>
+    <string name="remaining_percent">%1$d%% remaining</string>
+    <string name="unknown">Unknown</string>
+    <string name="stale">Stale data</string>
+    <string name="error">Refresh error</string>
+    <string name="login">Device-code login</string>
+    <string name="login_device_code_description">Live login remains disabled while the native Android portability gate is blocked. This build does not collect credentials.</string>
+    <string name="permission_description">Allow notifications to receive a quiet status update every 30 minutes.</string>
+    <string name="enable_updates">Enable updates</string>
+    <string name="notification_channel_name">Usage status</string>
+    <string name="notification_title">Codex usage</string>
+    <string name="notification_remaining">%1$d%% remaining</string>
+    <string name="notification_exact_remaining">%1$d%% · %2$s</string>
+    <string name="notification_exact_unknown">--%% · %1$s</string>
+    <string name="five_hour_window">5-hour</string>
+    <string name="seven_day_window">7-day</string>
+    <string name="widget_live">Live</string>
+    <string name="widget_stale">Stale</string>
+    <string name="widget_unknown">Unknown</string>
+    <string name="mock_scenarios">Mock scenarios</string>
+    <string name="window_summary">%1$s: %2$s · reset %3$s</string>
+    <string name="fetched_at">Fetched %1$s</string>
+    <string name="refresh_now">Refresh now</string>
+    <string name="add_widget">Add home-screen widget</string>
+    <string name="refresh_interval">Refresh interval: %1$d min</string>
+    <string name="notifications_toggle">Notifications enabled</string>
+    <string name="native_gate_unavailable">Live Codex login is unavailable until the Android native gate passes.</string>
+    <string name="privacy_summary">Privacy: usage values stay on-device; no telemetry, ads, or remote relay.</string>
+    <string name="license_summary">License: Apache-2.0. Unofficial and not affiliated with or endorsed by OpenAI.</string>
+    <string name="logout">Log out</string>
+</resources>

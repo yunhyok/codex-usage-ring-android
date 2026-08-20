@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "observed_date": "2026-08-21",
+  "status": "no-go",
+  "scope": "usage-ring-native-arm64-android",
+  "upstream": {
+    "tag": "rust-v0.148.0",
+    "tag_object": "ab52d1794d47d47ecaeb0ec37fc00fa31593ecf3",
+    "commit": "3ba0f711642a888aec92a611a3f3b2211157ff89"
+  },
+  "scaffold": {
+    "rust": "1.95.0",
+    "ndk": "28.2.13676358",
+    "target": "aarch64-linux-android",
+    "min_api": 29,
+    "fmt": "pass",
+    "clippy_warnings_denied": "pass",
+    "unit_tests": { "status": "pass", "passed": 5, "failed": 0 },
+    "arm64_cross_build": "pass",
+    "artifact": "libusage_ring_codex.so",
+    "artifact_size_bytes": 5354576,
+    "artifact_sha256": "d1492fa19822aa82b0010113bf8c400c4319ee136f78c08c88f53b8b13392426",
+    "artifact_note": "Final local scaffold rerun with line-table debug information; not a reproducible-release claim or functional Codex runtime"
+  },
+  "upstream_probe": {
+    "status": "fail",
+    "code": "OPENSSL_SYS_ANDROID_MISSING",
+    "crate": "openssl-sys 0.9.111",
+    "authenticated_request_performed": false
+  },
+  "blockers": [
+    "OPENSSL_SYS_ANDROID_MISSING",
+    "CODEX_RUNTIME_NOT_LINKED",
+    "PHYSICAL_DEVICE_LOGIN_NOT_RUN"
+  ],
+  "release_allowed": false
+}

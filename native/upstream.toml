@@ -1,0 +1,26 @@
+# Public source pin and API notes for the feasibility spike.  This file is
+# metadata only; the upstream repository is intentionally not vendored.
+source = "https://github.com/openai/codex.git"
+tag = "rust-v0.148.0"
+tag_object = "ab52d1794d47d47ecaeb0ec37fc00fa31593ecf3"
+commit = "3ba0f711642a888aec92a611a3f3b2211157ff89"
+
+# No local patch is applied.  A future integration must record every patch
+# here and in native/README.md before it can change the gate to GO.
+patches = []
+
+[runtime]
+# This remains false until Cargo links the pinned app-server client/runtime and
+# the physical Android acceptance matrix proves TLS, auth refresh, and plugin
+# suppression. Metadata or a successful JNI scaffold build cannot flip it.
+linked = false
+required_packages = ["codex-app-server", "codex-app-server-client"]
+
+[api]
+in_process_start = "codex-rs/app-server/src/in_process.rs::start(InProcessStartArgs)"
+client_facade = "codex-rs/app-server-client/src/lib.rs::InProcessAppServerClient"
+device_login_start = "account/login/start + {type: chatgptDeviceCode}"
+device_login_completion = "account/login/completed notification (client-side poll/drain)"
+device_login_cancel = "account/login/cancel + {loginId}"
+rate_limits = "account/rateLimits/read"
+logout = "account/logout"

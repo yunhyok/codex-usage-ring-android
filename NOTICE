@@ -1,0 +1,19 @@
+Usage Ring
+Copyright 2026 the Usage Ring contributors
+
+Usage Ring is an unofficial, independent project and is not affiliated with,
+sponsored by, or endorsed by OpenAI. OpenAI, Codex, and related marks belong to
+their respective owners; this repository does not include OpenAI logos or
+branding.
+
+The public Codelight project was consulted as a design reference. No Codelight
+source code or assets are copied or redistributed here. Codelight remains under
+its own license and ownership.
+
+Third-party dependencies are listed in their own license and notice files (or
+in the generated release SBOM) and are not relicensed by this notice.
+
+The pinned OpenAI Codex source attribution and license pointer are included in
+`third_party/openai-codex/`. No Codex runtime is currently redistributed in an
+APK; those files preserve the required notice boundary if the gated source
+integration later succeeds.

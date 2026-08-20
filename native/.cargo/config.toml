@@ -1,0 +1,5 @@
+# The Android NDK ships API-level-suffixed clang launchers on Windows. Rust's
+# default `aarch64-linux-android-clang` name is not present in NDK 28.2, so use
+# the API-29 launcher explicitly (the app's minSdk is 29).
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android29-clang.cmd"

@@ -1,0 +1,28 @@
+# Android / Gradle
+.gradle/
+build/
+*/build/
+local.properties
+*.iml
+.idea/
+
+# Native / Rust
+target/
+*.rs.bk
+native/gate-report*.json
+
+# Local secrets and release material (never commit signing keys)
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.pfx
+secrets/
+release-local/
+docs/evidence/**/raw/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp

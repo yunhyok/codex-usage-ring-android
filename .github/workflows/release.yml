@@ -1,0 +1,232 @@
+name: v0.1.0 prerelease
+
+on:
+  push:
+    tags:
+      - v0.1.0
+
+concurrency:
+  group: release-v0.1.0
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '17'
+  EVIDENCE_DIR: docs/evidence/v0.1.0
+
+jobs:
+  native-gate:
+    name: Hard native NO-GO gate
+    if: github.repository == 'yunhyok/codex-usage-ring-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: v0.1.0
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-linux-android
+          components: rustfmt, clippy
+      - name: Install pinned Android NDK
+        shell: bash
+        run: |
+          command -v sdkmanager
+          test -n "$ANDROID_SDK_ROOT"
+          sdkmanager --install 'ndk;28.2.13676358'
+      - name: Rust format, clippy, and tests
+        shell: bash
+        run: |
+          manifest='Cargo.toml'
+          [[ -f native/Cargo.toml ]] && manifest='native/Cargo.toml'
+          test -f "$manifest" || { echo 'Cargo.toml not found'; exit 1; }
+          cargo fmt --manifest-path "$manifest" --all -- --check
+          cargo clippy --manifest-path "$manifest" --workspace --all-targets --all-features -- -D warnings
+          cargo test --manifest-path "$manifest" --workspace --all-features
+      - name: Enforce Cargo license policy
+        shell: pwsh
+        run: ./scripts/verify-cargo-licenses.ps1
+      - name: Run Android native gate (failure is NO-GO)
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace nativeGate
+      - name: Require native evidence committed with the tag
+        shell: pwsh
+        run: |
+          $e = Get-Content -Raw "$env:EVIDENCE_DIR/native-gate.json" | ConvertFrom-Json
+          if ($e.status -ne 'pass' -or [string]::IsNullOrWhiteSpace([string]$e.commit) -or [string]::IsNullOrWhiteSpace([string]$e.run_url)) {
+            throw 'native-gate.json must record status=pass, commit, and run_url.'
+          }
+      - name: Extract native debug symbols
+        shell: bash
+        run: |
+          so='native/target/aarch64-linux-android/release/libusage_ring_codex.so'
+          objcopy="$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objcopy"
+          test -s "$so"
+          test -x "$objcopy"
+          "$objcopy" --only-keep-debug "$so" "$so.dbg"
+      - name: Upload native evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v0.1.0-native-gate
+          if-no-files-found: error
+          path: |
+            ${{ env.EVIDENCE_DIR }}/native-gate.json
+            native/target/aarch64-linux-android/release/libusage_ring_codex.so
+            native/target/aarch64-linux-android/release/libusage_ring_codex.so.dbg
+
+  physical-device:
+    name: Physical-device evidence gate
+    if: github.repository == 'yunhyok/codex-usage-ring-android'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: v0.1.0
+      - name: Validate reviewed device evidence
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:EVIDENCE_DIR 'physical-device.json'
+          if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing physical-device evidence: $path" }
+          $e = Get-Content -Raw $path | ConvertFrom-Json
+          foreach ($field in @('device_model','android_api','test_date','reviewer','run_url')) {
+            if ([string]::IsNullOrWhiteSpace([string]$e.$field)) { throw "physical-device.json is missing $field" }
+          }
+          foreach ($field in @('install','launch','widget','uninstall')) {
+            if ($e.$field -ne 'pass') { throw "physical-device.json field $field must be pass" }
+          }
+          if ($e.status -ne 'pass') { throw 'physical-device.json status must be pass' }
+        env:
+          EVIDENCE_DIR: ${{ env.EVIDENCE_DIR }}
+
+  build-sign-verify:
+    name: Build, sign, verify, SBOM, and attest
+    needs: [native-gate, physical-device]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: prerelease
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: v0.1.0
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Download verified native gate artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: v0.1.0-native-gate
+          path: native-gate-artifact
+      - name: Stage verified ARM64 library and symbols
+        shell: bash
+        run: |
+          mkdir -p native/target/aarch64-linux-android/release
+          cp native-gate-artifact/native/target/aarch64-linux-android/release/libusage_ring_codex.so native/target/aarch64-linux-android/release/
+          cp native-gate-artifact/native/target/aarch64-linux-android/release/libusage_ring_codex.so.dbg native/target/aarch64-linux-android/release/
+      - name: Require external signing secrets
+        shell: pwsh
+        run: |
+          foreach ($name in @('ANDROID_KEYSTORE_B64','ANDROID_KEY_ALIAS','ANDROID_KEYSTORE_PASSWORD','ANDROID_KEY_PASSWORD')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) { throw "Missing external signing secret: $name" }
+          }
+      - name: Materialize external keystore in ephemeral runner storage
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'usage-ring-release.jks'
+          [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:ANDROID_KEYSTORE_B64))
+          "ANDROID_KEYSTORE_PATH=$path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          # No key is generated; the file is deleted by the runner after the job.
+      - name: Build signed release APK
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace assembleNativeRelease cyclonedxBom
+      - name: Enforce dependency license policy
+        shell: pwsh
+        run: ./scripts/verify-sbom.ps1
+      - name: Locate release APK
+        id: apk
+        shell: pwsh
+        run: |
+          $apk = Get-ChildItem -Path 'app/build/outputs/apk/native/release' -Filter '*.apk' -File | Where-Object { $_.Name -notmatch '(?i)debug|unsigned' } | Select-Object -First 1
+          if ($null -eq $apk) { throw 'No signed release APK found.' }
+          "path=$($apk.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - name: Verify APK and hard release preflight
+        shell: pwsh
+        env:
+          APK_PATH: ${{ steps.apk.outputs.path }}
+        run: |
+          & "$env:GITHUB_WORKSPACE/scripts/release/preflight.ps1" -Tag v0.1.0 -EvidenceDir $env:EVIDENCE_DIR -ApkPath $env:APK_PATH -RequireSigning
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          (Get-FileHash -LiteralPath $env:APK_PATH -Algorithm SHA256).Hash.ToLowerInvariant() | Out-File -FilePath release.apk.sha256 -Encoding ascii
+      - name: Generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          artifact-name: usage-ring-v0.1.0.spdx.json
+          output-file: usage-ring-v0.1.0.spdx.json
+      - name: Collect Gradle dependency SBOM
+        shell: pwsh
+        run: Copy-Item -LiteralPath build/reports/cyclonedx/bom.json -Destination usage-ring-v0.1.0.cdx.json
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: ${{ steps.apk.outputs.path }}
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: usage-ring-v0.1.0-release
+          path: |
+            ${{ steps.apk.outputs.path }}
+            release.apk.sha256
+            usage-ring-v0.1.0.spdx.json
+            usage-ring-v0.1.0.cdx.json
+            native/target/aarch64-linux-android/release/libusage_ring_codex.so.dbg
+
+  publish:
+    name: Publish GitHub prerelease
+    needs: build-sign-verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: usage-ring-v0.1.0-release
+          path: dist
+      - name: Publish v0.1.0 as prerelease
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: v0.1.0
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            dist/**/*.apk
+            dist/release.apk.sha256
+            dist/usage-ring-v0.1.0.spdx.json
+            dist/usage-ring-v0.1.0.cdx.json
+            dist/**/libusage_ring_codex.so.dbg
