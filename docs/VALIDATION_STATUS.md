@@ -6,7 +6,7 @@ attached to the release review. Until then it remains **not run** or **blocked**
 
 | Check | Required evidence | Status |
 | --- | --- | --- |
-| Android Studio Quail 3 toolchain | AI-261 install, JDK 17, SDK 36, NDK 28.2, AVD inventory | **local setup complete; API 29/31/33/34/35/36 AVD install and launch recorded, IDE interactive sync not recorded** |
+| Android Studio Quail 3 toolchain | AI-261 install, JDK 17, SDK 36, NDK 28.2, AVD inventory | **local setup complete; Temurin 17 interactive IDE sync pass; API 29/31/33/34/35/36 AVD install and launch recorded** |
 | `testMockDebugUnitTest`, `lintMockDebug`, `assembleMockDebug` | Local/CI log and mock APK artifact | **local pass (2026-08-21); public main CI pass** |
 | `assembleNativeDebug` JNI packaging | APK contains `lib/arm64-v8a/libusage_ring_codex.so` | **local scaffold pass; not runtime readiness** |
 | Responsive widget and quiet notification | API 36 pin/resize, permission, notification panel and manager state | **local mock pass; API 31/33/34/35 launch regression pass; physical device pending** |
