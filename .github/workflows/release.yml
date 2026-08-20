@@ -24,11 +24,11 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Check out tagged source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v0.1.0
       - name: Set up JDK 17
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -42,9 +42,15 @@ jobs:
       - name: Install pinned Android NDK
         shell: bash
         run: |
-          command -v sdkmanager
-          test -n "$ANDROID_SDK_ROOT"
-          sdkmanager --install 'ndk;28.2.13676358'
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$sdk_root"
+          sdkmanager_path="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_path" ]]; then
+            sdkmanager_path="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print | sort -V | tail -n 1)"
+          fi
+          test -n "$sdkmanager_path"
+          test -x "$sdkmanager_path"
+          "$sdkmanager_path" --install 'ndk;28.2.13676358'
       - name: Rust format, clippy, and tests
         shell: bash
         run: |
@@ -76,7 +82,7 @@ jobs:
           test -x "$objcopy"
           "$objcopy" --only-keep-debug "$so" "$so.dbg"
       - name: Upload native evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: v0.1.0-native-gate
           if-no-files-found: error
@@ -91,7 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out tagged source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v0.1.0
       - name: Validate reviewed device evidence
@@ -127,11 +133,11 @@ jobs:
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Check out tagged source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v0.1.0
       - name: Set up JDK 17
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -139,7 +145,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Download verified native gate artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: v0.1.0-native-gate
           path: native-gate-artifact
@@ -196,7 +202,7 @@ jobs:
         with:
           subject-path: ${{ steps.apk.outputs.path }}
       - name: Upload release artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: usage-ring-v0.1.0-release
           path: |
@@ -214,7 +220,7 @@ jobs:
       contents: write
     steps:
       - name: Download verified release artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: usage-ring-v0.1.0-release
           path: dist
