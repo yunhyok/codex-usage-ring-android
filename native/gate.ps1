@@ -121,6 +121,28 @@ function Initialize-HostLinkEnvironment {
     return @{ passed = $false; evidence = $evidence }
 }
 
+function Initialize-AndroidCompilerEnvironment([string] $NdkRoot, [string] $ClangPath) {
+    $ndkBin = Split-Path -Parent $ClangPath
+    $arName = if ($IsWindows) { 'llvm-ar.exe' } else { 'llvm-ar' }
+    $arPath = Join-Path $ndkBin $arName
+    $env:Path = "$ndkBin$([IO.Path]::PathSeparator)$env:Path"
+    $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $ClangPath
+
+    # Cargo uses the linker variable, while native build scripts such as cc-rs
+    # independently inspect target-specific CC/AR variables. Set both accepted
+    # target spellings so the probe reaches the dependency's real Android
+    # portability boundary instead of failing on compiler discovery.
+    foreach ($name in @('CC_aarch64_linux_android', 'CC_aarch64-linux-android')) {
+        [Environment]::SetEnvironmentVariable($name, $ClangPath)
+    }
+    if (Test-Path -LiteralPath $arPath) {
+        foreach ($name in @('AR_aarch64_linux_android', 'AR_aarch64-linux-android')) {
+            [Environment]::SetEnvironmentVariable($name, $arPath)
+        }
+    }
+    return [ordered]@{ ndk = $NdkRoot; clang = $ClangPath; ar = $arPath; ar_exists = (Test-Path -LiteralPath $arPath) }
+}
+
 $manifest = Join-Path $nativeRoot 'Cargo.toml'
 $upstreamFile = Join-Path $nativeRoot 'upstream.toml'
 $upstreamText = Get-Content -LiteralPath $upstreamFile -Raw
@@ -232,9 +254,7 @@ if ($cargo) {
 if ($cargo -and $targetInstalled -and $ndkEvidence.linker_exists) {
     $env:ANDROID_NDK_HOME = $ndk
     $env:ANDROID_NDK_ROOT = $ndk
-    $ndkBin = Split-Path -Parent $clang
-    $env:Path = "$ndkBin$([IO.Path]::PathSeparator)$env:Path"
-    $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $clang
+    $report.commands.android_compiler_environment = Initialize-AndroidCompilerEnvironment $ndk $clang
     $cross = Invoke-Captured $cargo.Source @('build', '--manifest-path', 'Cargo.toml', '--target', 'aarch64-linux-android', '--release') $nativeRoot
     $report.commands.android_cross_build = $cross
     if ($cross.exit_code -ne 0) {
@@ -276,9 +296,7 @@ if ($ProbeUpstream) {
     if ($sparse -and $sparse.exit_code -eq 0 -and $cargo -and $targetInstalled -and $ndkEvidence.linker_exists) {
         $env:ANDROID_NDK_HOME = $ndk
         $env:ANDROID_NDK_ROOT = $ndk
-        $env:Path = "$(Split-Path -Parent $clang)$([IO.Path]::PathSeparator)$env:Path"
-        $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $clang
-        $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $clang
+        $probeEvidence.compiler_environment = Initialize-AndroidCompilerEnvironment $ndk $clang
         $probe = Invoke-Captured $cargo.Source @('check', '--manifest-path', (Join-Path $probeRoot 'codex-rs\Cargo.toml'), '-p', 'codex-app-server-client', '--target', 'aarch64-linux-android')
     }
     $probeEvidence.clone = $clone
