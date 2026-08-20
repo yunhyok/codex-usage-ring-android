@@ -21,6 +21,18 @@ Android Studio itself uses its bundled JetBrains Runtime; Gradle is configured
 and verified against JDK 17. Do not replace the wrapper or native pins during a
 release build without a reviewed dependency change.
 
+## Interactive IDE evidence (2026-08-21)
+
+- Android Studio Quail 3 opened the repository as the `CodexUsageRing` Android
+  project and discovered the `app` module and the configured API 35 AVD.
+- The project-local `#GRADLE_LOCAL_JAVA_HOME` mapping points to Eclipse Temurin
+  `17.0.20+8`. Android Studio's `idea.log` records Gradle using that exact JDK,
+  followed by `onSuccess(RESOLVE_PROJECT:0)` and a completed 43.214-second sync.
+- The IDE's optional Microsoft Defender exclusion remained disabled. No Windows
+  security exclusions were added for the project or Android Studio.
+- Quail's optional Gradle daemon-toolchain migration was not accepted because
+  the repository does not configure automatic JDK download repositories.
+
 ## Device Manager matrix
 
 The following x86_64 AVDs cover platform behavior in `mockDebug`:
