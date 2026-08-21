@@ -71,7 +71,9 @@ try {
         Stop-Gate "native APK must contain only arm64-v8a (found: $($abis -join ', '))."
     }
 
-    $aapt = Find-AndroidTool 'build-tools\36.0.0\aapt.exe' 'aapt.exe'
+    $aaptRelative = if ($IsWindows) { 'build-tools\36.0.0\aapt.exe' } else { 'build-tools/36.0.0/aapt' }
+    $aaptLeaf = if ($IsWindows) { 'aapt.exe' } else { 'aapt' }
+    $aapt = Find-AndroidTool $aaptRelative $aaptLeaf
     if ([string]::IsNullOrWhiteSpace($aapt)) { Stop-Gate 'aapt was not found in the Android SDK.' }
     $badging = @(& $aapt dump badging $apk 2>&1)
     if ($LASTEXITCODE -ne 0) { Stop-Gate 'aapt could not read the APK.' }
@@ -84,7 +86,9 @@ try {
         if (-not $badgingText.Contains($expected)) { Stop-Gate "APK badging is missing: $expected" }
     }
 
-    $apkAnalyzer = Find-AndroidTool 'cmdline-tools\latest\bin\apkanalyzer.bat' 'apkanalyzer.bat'
+    $apkAnalyzerRelative = if ($IsWindows) { 'cmdline-tools\latest\bin\apkanalyzer.bat' } else { 'cmdline-tools/latest/bin/apkanalyzer' }
+    $apkAnalyzerLeaf = if ($IsWindows) { 'apkanalyzer.bat' } else { 'apkanalyzer' }
+    $apkAnalyzer = Find-AndroidTool $apkAnalyzerRelative $apkAnalyzerLeaf
     if ([string]::IsNullOrWhiteSpace($apkAnalyzer)) { Stop-Gate 'apkanalyzer was not found in the Android SDK.' }
     $dexPackages = @(& $apkAnalyzer dex packages --defined-only $apk 2>&1)
     if ($LASTEXITCODE -ne 0 -or ($dexPackages -join "`n") -notmatch 'org\.rustls\.platformverifier\.CertificateVerifier') {
@@ -112,7 +116,9 @@ try {
         exit 0
     }
 
-    $adb = Find-AndroidTool 'platform-tools\adb.exe' 'adb.exe'
+    $adbRelative = if ($IsWindows) { 'platform-tools\adb.exe' } else { 'platform-tools/adb' }
+    $adbLeaf = if ($IsWindows) { 'adb.exe' } else { 'adb' }
+    $adb = Find-AndroidTool $adbRelative $adbLeaf
     if ([string]::IsNullOrWhiteSpace($adb)) { Stop-Gate 'adb was not found in the Android SDK.' }
     $deviceLines = @(& $adb devices 2>&1)
     if ($LASTEXITCODE -ne 0) { Stop-Gate 'adb devices failed.' }
