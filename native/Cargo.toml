@@ -43,6 +43,7 @@ debug = "line-tables-only"
 [patch.crates-io]
 reqwest = { path = "../third_party/openai-codex/patches/reqwest-0.12.28" }
 sentry = { path = "../third_party/openai-codex/patches/sentry-0.46.2" }
+rama-dns = { path = "../third_party/openai-codex/patches/rama-dns-0.3.0-alpha.4" }
 # v0.148.0 pins OpenAI's tungstenite fork because the upstream crate's
 # deflate/proxy feature set is not published for the exact 0.27 API.  The
 # patch is part of the upstream commit's own Cargo workspace configuration.
@@ -51,3 +52,4 @@ tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungsteni
 
 [patch."https://github.com/openai/codex.git"]
 codex-app-server = { path = "../third_party/openai-codex/patches/app-server" }
+codex-git-utils = { path = "../third_party/openai-codex/patches/codex-git-utils" }

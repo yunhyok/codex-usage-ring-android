@@ -26,6 +26,15 @@ modified-file hashes are recorded in
 `../third_party/openai-codex/upstream.toml` and
 `../third_party/openai-codex/PATCHES.md`.
 
+The same provenance record covers two dependency-only security adaptations
+without changing the Codex tag: a standalone `codex-git-utils` manifest selects
+`gix` 0.83.0, and a patched `rama-dns` 0.3.0-alpha.4 selects Hickory 0.26.1.
+Their source/API changes, license texts, and hashes are committed beside the
+app-server patch. The native gate binds those hashes, including the
+byte-identical `codex-git-utils/src` tree digest, into the exported runtime
+marker, checks the exact locked versions, and rejects a stale `.so` containing
+the former vulnerable version strings.
+
 At that tag, [`codex-app-server`'s in-process runtime](https://github.com/openai/codex/blob/rust-v0.148.0/codex-rs/app-server/src/in_process.rs)
 exposes `start(InProcessStartArgs)` and the
 [`codex-app-server-client` facade](https://github.com/openai/codex/blob/rust-v0.148.0/codex-rs/app-server-client/src/lib.rs)
@@ -61,7 +70,8 @@ pwsh -File native/gate.ps1 -ReportPath native/gate-report.json
 The command writes machine-readable JSON and exits `2` for `NO-GO`. It checks
 Rust 1.95.0, the `aarch64-linux-android` target, NDK clang, Cargo unit tests,
 the actual locked ARM64 release build, vendored app-server Skip/hash evidence,
-linked JNI symbols/marker, and absence of `openssl-sys` on the Android graph.
+reviewed gix/Hickory versions and patch hashes, linked JNI symbols/marker, and
+absence of `openssl-sys` on the Android graph.
 When these source and binary checks pass, the report may be static `GO`, but it
 always keeps `release_ready=false`. A separate physical ARM64 evidence gate must
 still prove verifier initialization, device login/poll/cancel, rate-limit

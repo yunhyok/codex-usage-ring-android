@@ -30,7 +30,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Run tests, lint, mockDebug, and dependency SBOM
         shell: bash
         run: ./gradlew --no-daemon --stacktrace testMockDebugUnitTest lintMockDebug assembleMockDebug cyclonedxBom
@@ -107,8 +107,25 @@ jobs:
         shell: bash
         run: |
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$sdk_root/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
-          test -x "$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"
+          ndk="$sdk_root/ndk/28.2.13676358"
+          toolchain="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          cc="$toolchain/aarch64-linux-android29-clang"
+          ar="$toolchain/llvm-ar"
+          export ANDROID_NDK_ROOT="$ndk"
+          export ANDROID_NDK_HOME="$ndk"
+          export CC_aarch64_linux_android="$cc"
+          export AR_aarch64_linux_android="$ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$cc"
+          test -d "$ndk"
+          test -x "$cc"
+          test -x "$ar"
+          {
+            echo "ANDROID_NDK_ROOT=$ndk"
+            echo "ANDROID_NDK_HOME=$ndk"
+            echo "CC_aarch64_linux_android=$cc"
+            echo "AR_aarch64_linux_android=$ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$cc"
+          } >> "$GITHUB_ENV"
           cargo build --locked --manifest-path native/Cargo.toml --target aarch64-linux-android --release
       - name: Package the physical-device candidate APK
         shell: bash
@@ -154,4 +171,11 @@ jobs:
           GITLEAKS_VERSION: 8.30.1
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        # v5 runs on the Node 24 runtime. Keep the immutable commit pin so a
+        # tag move cannot alter this security gate.
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # High and critical advisories fail the job; no GHSA is allowlisted.
+          # A package is exempt only after it is absent from the target graph,
+          # which must be demonstrated by the native gate evidence.
+          fail-on-severity: high

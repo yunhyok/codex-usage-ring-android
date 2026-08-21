@@ -19,9 +19,12 @@ working tree that has not passed the hard native gate.
       rate-limit read, 25 refreshes, widget resize, notification dismissal and
       restoration, offline recovery, logout/re-login, reboot recovery,
       secret-log scan, plugin/MCP suppression, and uninstall.
-      Include the exact tagged source commit and SHA-256 of the APK used for the
-      device run; the release workflow verifies the source binding and digest
-      format, then reports the final signed APK hash separately.
+      Include the exact tagged source commit, the exact repository Actions run
+      URL for a successful CI run at that commit, and SHA-256 of the APK used
+      for the device run. The release workflow downloads the sole
+      `native-ci-<tagged SHA>` candidate from that run and verifies both its APK
+      and static report hashes before signing; it reports the final signed APK
+      hash separately.
 - [ ] Review permissions and APK contents; verify that no debug certificate,
       unexpected network permission, or secret is present.
 

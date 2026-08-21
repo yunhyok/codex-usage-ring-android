@@ -18,3 +18,8 @@ The pinned OpenAI Codex source attribution and license pointer are included in
 source is part of the native build graph, retains its Apache-2.0 notices, and is
 not an OpenAI product or endorsement. Release publication remains gated on the
 reviewed native and physical-device evidence described in the documentation.
+
+The Android dependency adaptation includes `rama-dns` 0.3.0-alpha.4,
+Copyright (c) 2022-2025 Glen Henri J. De Cauwsemaecker, under MIT OR
+Apache-2.0. Its unmodified license texts and the exact modified-file hashes are
+retained under `third_party/openai-codex/patches/rama-dns-0.3.0-alpha.4/`.

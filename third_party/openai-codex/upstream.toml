@@ -1,5 +1,5 @@
-# Provenance for the small vendored app-server adaptation used by native.
-# The upstream package is Apache-2.0; retain LICENSE/NOTICE beside this file.
+# Provenance for the small vendored Android adaptations used by native.
+# Each package retains its upstream license beside the patched source.
 [upstream]
 repository = "https://github.com/openai/codex.git"
 commit = "3ba0f711642a888aec92a611a3f3b2211157ff89"
@@ -31,6 +31,27 @@ change = "On Android, use rustls-platform-verifier's Java TrustManager when no c
 upstream_sha256 = "F2D8ADB95CE6E0DA6ABB01A8DE5B2D2A757AEF63AC65036E8589D8292F4B9297"
 patched_sha256 = "BE73DC4ED0198DE96D8BE705E5D48481BECB521DA3D04B4E421E357B800A6C93"
 change = "Remove the default sentry transport feature to prevent an unused Android transport dependency."
+
+[files."codex-rs/git-utils/Cargo.toml"]
+upstream_sha256 = "1B812BBA7CC7DFA5339AB3DDB5E499E35FCAFE42A6489E1E7A43208B291A816D"
+patched_sha256 = "44C57496572F5E75382398A7D2BDD9D7898B28E4043917B71AD7CDD0ED0F279A"
+change = "Standalone manifest pins the v0.148.0 dependencies and selects gix 0.83.0; source files are unchanged."
+
+[trees."codex-rs/git-utils/src"]
+file_count = 14
+upstream_sha256 = "612B653C5725B1285076A9F8A27461F16464D69CC97A82458C1B790B1CEFFA15"
+patched_sha256 = "612B653C5725B1285076A9F8A27461F16464D69CC97A82458C1B790B1CEFFA15"
+algorithm = "SHA-256 over UTF-8 lines '<file-sha256-lower>  <relative-path-with-forward-slashes>', path-sorted, final newline"
+
+[files."rama-dns-0.3.0-alpha.4/Cargo.toml"]
+upstream_sha256 = "26AF0AAAB138F30324BC7AAB39E083F06D1B41C29CC7716DC5EB7B81569B6B16"
+patched_sha256 = "7AC309C4323860CBC77C37EA0CD82AAA62D3716B6E8312B7CA7C4CCE5C40D4A7"
+change = "Select hickory-resolver 0.26.1 instead of the vulnerable 0.25 line."
+
+[files."rama-dns-0.3.0-alpha.4/src/hickory.rs"]
+upstream_sha256 = "78C03B179AA11462C3F0DC233B60800DBA313DA96610404D5498CF9B76BC2C0F"
+patched_sha256 = "9518B743ADDDBC5A0D54B7587F9D712CF575FE8FAD23959C78CA1475016DABF9"
+change = "Adapt server presets, runtime construction, fallible builds, and typed answer records to Hickory 0.26.1 without changing the Rama DNS public API."
 
 [patch]
 file = "patches/app-server-in-process-plugin-skip.patch"

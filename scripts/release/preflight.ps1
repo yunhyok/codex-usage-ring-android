@@ -70,8 +70,9 @@ try {
     if ([string]$deviceEvidence.apk_sha256 -notmatch '^[0-9a-fA-F]{64}$') {
         Stop-Preflight 'physical-device evidence apk_sha256 must be a SHA-256 digest.'
     }
-    if ([string]$deviceEvidence.run_url -notmatch '^https://') {
-        Stop-Preflight 'physical-device evidence run_url must be an HTTPS review URL.'
+    $deviceRunPattern = '^https://github\.com/yunhyok/codex-usage-ring-android/actions/runs/[0-9]+$'
+    if ([string]$deviceEvidence.run_url -notmatch $deviceRunPattern) {
+        Stop-Preflight 'physical-device evidence run_url must be this repository exact Actions run URL (without query strings).'
     }
     if ($RequireSigning) {
         $git = Get-Command git -ErrorAction SilentlyContinue

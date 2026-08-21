@@ -5,8 +5,10 @@ release, add (in the release PR) the following reviewed files:
 
 - `native-gate.json`: `{ "status": "pass", "commit": "...", "run_url": "..." }`
 - `physical-device.json`: status, device model, Android API level, test date,
-  reviewer, HTTPS run URL, the exact 40-character source commit, and the
-  SHA-256 of the exact signed APK exercised on the device. Every check below must be the literal
+  reviewer, the exact repository Actions run URL, the exact 40-character source
+  commit, and the SHA-256 of the exact candidate APK exercised on the device.
+  The run URL must identify a successful CI run whose `head_sha` equals the
+  tagged commit. Every check below must be the literal
   string `pass`:
 
   - `install`, `launch`, `native_load`, and `tls_system_trust`
@@ -17,9 +19,11 @@ release, add (in the release PR) the following reviewed files:
   - `secret_log_scan`, `plugin_mcp_blocked`, and `uninstall`
 
 The source commit must equal the tagged commit. `apk_sha256` identifies the
-exact APK exercised on the device (typically the nativeDebug candidate); the
-release workflow computes and publishes the final signed APK digest separately
-after rebuilding from that same tagged source. The record must not contain a device serial, account identifier, device code,
+exact APK exercised on the device and must match the sole `app-native-debug.apk`
+and `static-apk.json` downloaded from the successful CI run named
+`native-ci-<tagged SHA>`. The release workflow computes and publishes the final
+signed APK digest separately after rebuilding from that same tagged source. The
+record must not contain a device serial, account identifier, device code,
 verification URL query string, token, or raw log output. A `pass` value needs
 reviewable local evidence; editing the JSON alone does not satisfy the gate.
 Start from [`physical-device.template.json`](physical-device.template.json)

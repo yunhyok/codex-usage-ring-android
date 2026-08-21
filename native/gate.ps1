@@ -345,6 +345,43 @@ if ($ProbeUpstream) {
 # separate mandatory gate, so this script cannot claim release GO by itself.
 $cargoLockPath = Join-Path $nativeRoot 'Cargo.lock'
 $cargoLockText = if (Test-Path -LiteralPath $cargoLockPath) { Get-Content -LiteralPath $cargoLockPath -Raw } else { '' }
+function Get-LockedPackageVersion {
+    param([string]$Name, [string]$LockText)
+    $escaped = [regex]::Escape($Name)
+    $match = [regex]::Match($LockText, "(?ms)^\[\[package\]\]\s+name\s*=\s*`"$escaped`"\s+version\s*=\s*`"([^`"]+)`"")
+    if ($match.Success) { return $match.Groups[1].Value }
+    return ''
+}
+function Get-CanonicalSourceTreeHash {
+    param([string]$Root)
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return '' }
+    $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
+    $entries = @(Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File | ForEach-Object {
+        [pscustomobject]@{
+            relative_path = [IO.Path]::GetRelativePath($resolvedRoot, $_.FullName).Replace('\', '/')
+            sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    } | Sort-Object relative_path)
+    if ($entries.Count -eq 0) { return '' }
+    $payload = (($entries | ForEach-Object { "$($_.sha256)  $($_.relative_path)" }) -join "`n") + "`n"
+    return [Convert]::ToHexString(
+        [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($payload))
+    ).ToLowerInvariant()
+}
+$expectedSecurityVersions = [ordered]@{
+    gix = '0.83.0'
+    'gix-fs' = '0.21.2'
+    'gix-pack' = '0.70.0'
+    'hickory-proto' = '0.26.1'
+    'hickory-resolver' = '0.26.1'
+}
+$lockedSecurityVersions = [ordered]@{}
+foreach ($packageName in $expectedSecurityVersions.Keys) {
+    $lockedSecurityVersions[$packageName] = Get-LockedPackageVersion $packageName $cargoLockText
+}
+$securityVersionsOk = @($expectedSecurityVersions.Keys | Where-Object {
+    $lockedSecurityVersions[$_] -ne $expectedSecurityVersions[$_]
+}).Count -eq 0
 $runtimeBlock = [regex]::Match($upstreamText, '(?ms)^\[runtime\]\s*(.*?)(?=^\[|\z)').Groups[1].Value
 $runtimeFlag = [regex]::Match($runtimeBlock, '(?m)^linked\s*=\s*(true|false)\s*$').Groups[1].Value -eq 'true'
 $requiredPackages = @('codex-app-server', 'codex-app-server-client')
@@ -355,24 +392,43 @@ $nativeSourceText = (Get-ChildItem -LiteralPath (Join-Path $nativeRoot 'src') -F
     ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
 $sourceReferencesRuntime = $nativeSourceText -match 'codex_app_server(?:_client)?'
 $vendorAppServer = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server'
+$vendorGitUtils = Join-Path $repoRoot 'third_party/openai-codex/patches/codex-git-utils/Cargo.toml'
+$vendorGitUtilsSource = Join-Path $repoRoot 'third_party/openai-codex/patches/codex-git-utils/src'
+$vendorRamaDns = Join-Path $repoRoot 'third_party/openai-codex/patches/rama-dns-0.3.0-alpha.4/Cargo.toml'
+$vendorRamaDnsSource = Join-Path $repoRoot 'third_party/openai-codex/patches/rama-dns-0.3.0-alpha.4/src/hickory.rs'
 $vendorInProcess = Join-Path $vendorAppServer 'src/in_process.rs'
 $patchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-in-process-plugin-skip.patch'
 $vendorManifest = Join-Path $vendorAppServer 'Cargo.toml'
 $vendorSourceText = if (Test-Path -LiteralPath $vendorInProcess) { Get-Content -LiteralPath $vendorInProcess -Raw } else { '' }
 $manifestText = if (Test-Path -LiteralPath $manifest) { Get-Content -LiteralPath $manifest -Raw } else { '' }
 $expectedPatchHash = '74a7a8529eb05dc117a6e06224fdfe68f498db4b8a01d9d5352e18ab0c5693f3'
+$expectedGixManifestHash = '44c57496572f5e75382398a7d2bdd9d7898b28e4043917b71ad7cdd0ed0f279a'
+$expectedGixSourceTreeHash = '612b653c5725b1285076a9f8a27461f16464d69cc97a82458c1b790b1ceffa15'
+$expectedDnsManifestHash = '7ac309c4323860cbc77c37ea0cd82aaa62d3716b6e8312b7ca7c4cce5c40d4a7'
+$expectedDnsSourceHash = '9518b743adddbc5a0d54b7587f9d712cf575fe8fad23959c78ca1475016dabf9'
 $patchHash = if (Test-Path -LiteralPath $patchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $patchFile).Hash.ToLowerInvariant() } else { '' }
+$gixManifestHash = if (Test-Path -LiteralPath $vendorGitUtils) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorGitUtils).Hash.ToLowerInvariant() } else { '' }
+$gixSourceTreeHash = Get-CanonicalSourceTreeHash $vendorGitUtilsSource
+$dnsManifestHash = if (Test-Path -LiteralPath $vendorRamaDns) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorRamaDns).Hash.ToLowerInvariant() } else { '' }
+$dnsSourceHash = if (Test-Path -LiteralPath $vendorRamaDnsSource) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorRamaDnsSource).Hash.ToLowerInvariant() } else { '' }
 $vendorPatchOk = (Test-Path -LiteralPath $vendorInProcess) -and
     ($vendorSourceText -match 'plugin_startup_tasks:\s*crate::PluginStartupTasks::Skip') -and
     ($vendorSourceText -notmatch 'plugin_startup_tasks:\s*crate::PluginStartupTasks::Start') -and
     (Test-Path -LiteralPath $vendorManifest) -and ($manifestText -match 'codex-app-server') -and
     ($patchHash -eq $expectedPatchHash)
-$runtimeMarker = 'usage-ring:codex-in-process:rust-v0.148.0:3ba0f711642a888aec92a611a3f3b2211157ff89:plugin-patch-sha256=' + $expectedPatchHash + ':telemetry=false:plugins=false:mcp=false:shell=false'
+$securityPatchOk = ($gixManifestHash -eq $expectedGixManifestHash) -and
+    ($gixSourceTreeHash -eq $expectedGixSourceTreeHash) -and
+    ($dnsManifestHash -eq $expectedDnsManifestHash) -and
+    ($dnsSourceHash -eq $expectedDnsSourceHash) -and
+    ($manifestText -match 'codex-git-utils\s*=\s*\{\s*path\s*=') -and
+    ($manifestText -match 'rama-dns\s*=\s*\{\s*path\s*=')
+$runtimeMarker = 'usage-ring:codex-in-process:rust-v0.148.0:3ba0f711642a888aec92a611a3f3b2211157ff89:plugin-patch-sha256=' + $expectedPatchHash + ':gix-manifest-sha256=' + $expectedGixManifestHash + ':gix-source-tree-sha256=' + $expectedGixSourceTreeHash + ':dns-manifest-sha256=' + $expectedDnsManifestHash + ':dns-source-sha256=' + $expectedDnsSourceHash + ':telemetry=false:plugins=false:mcp=false:shell=false'
 $releaseSo = Join-Path $nativeRoot 'target/aarch64-linux-android/release/libusage_ring_codex.so'
 $soHash = ''
 $soSize = 0
 $soSymbols = @()
 $soMarker = ''
+$oldVulnerableStrings = @()
 $llvmNm = if ($clang) { Join-Path (Split-Path -Parent $clang) $(if ($IsWindows) { 'llvm-nm.exe' } else { 'llvm-nm' }) } else { $null }
 $llvmStrings = if ($clang) { Join-Path (Split-Path -Parent $clang) $(if ($IsWindows) { 'llvm-strings.exe' } else { 'llvm-strings' }) } else { $null }
 if (Test-Path -LiteralPath $releaseSo) {
@@ -391,6 +447,17 @@ if (Test-Path -LiteralPath $releaseSo) {
             Select-String -SimpleMatch 'usage-ring:codex-in-process:' |
             Select-Object -First 1
         $soMarker = if ($markerLine) { $markerLine.Line.Trim() } else { '' }
+        $oldVersionPatterns = @(
+            'gix-0.81.0',
+            'gix-fs-0.19.2',
+            'gix-pack-0.68.0',
+            'hickory-proto-0.25.2',
+            'hickory-resolver-0.25.2'
+        )
+        $oldVulnerableStrings = @(& $llvmStrings $releaseSo 2>$null |
+            Select-String -SimpleMatch -Pattern $oldVersionPatterns |
+            Select-Object -First 20 |
+            ForEach-Object { $_.Line.Trim() })
     }
 }
 $expectedSymbols = @(
@@ -405,6 +472,7 @@ $expectedSymbols = @(
 $symbolText = $soSymbols -join "`n"
 $symbolsOk = (Test-Path -LiteralPath $releaseSo) -and ($expectedSymbols | Where-Object { $symbolText -notmatch [regex]::Escape($_) }).Count -eq 0
 $markerOk = $soMarker -match [regex]::Escape($runtimeMarker)
+$securityBinaryOk = (Test-Path -LiteralPath $releaseSo) -and $oldVulnerableStrings.Count -eq 0
 $noOpenSsl = $false
 if ($cargo) {
     $tree = Invoke-Captured $cargo.Source @('tree', '--manifest-path', 'Cargo.toml', '--target', 'aarch64-linux-android', '--locked', '-i', 'openssl-sys') $nativeRoot
@@ -422,6 +490,21 @@ $runtimeEvidence = [ordered]@{
     plugin_startup_skip = [bool]$vendorPatchOk
     plugin_patch_sha256 = $patchHash
     expected_plugin_patch_sha256 = $expectedPatchHash
+    security_patch_hashes = [ordered]@{
+        codex_git_utils_manifest = $gixManifestHash
+        codex_git_utils_source_tree = $gixSourceTreeHash
+        rama_dns_manifest = $dnsManifestHash
+        rama_dns_source = $dnsSourceHash
+    }
+    expected_security_patch_hashes = [ordered]@{
+        codex_git_utils_manifest = $expectedGixManifestHash
+        codex_git_utils_source_tree = $expectedGixSourceTreeHash
+        rama_dns_manifest = $expectedDnsManifestHash
+        rama_dns_source = $expectedDnsSourceHash
+    }
+    locked_security_versions = $lockedSecurityVersions
+    expected_security_versions = $expectedSecurityVersions
+    vulnerable_version_strings = $oldVulnerableStrings
     release_so = $releaseSo
     release_so_size = $soSize
     release_so_sha256 = $soHash
@@ -433,7 +516,7 @@ $runtimeEvidence = [ordered]@{
     probe_requested = [bool]$ProbeUpstream
     note = 'Cross-build evidence is host-side only. Physical Android verifier/login/rate-limit/logout/shutdown proof remains pending.'
 }
-if (-not $runtimeFlag -or $lockedPackages.Count -ne $requiredPackages.Count -or -not $sourceReferencesRuntime -or -not $vendorPatchOk -or -not $noOpenSsl -or -not $symbolsOk -or -not $markerOk) {
+if (-not $runtimeFlag -or $lockedPackages.Count -ne $requiredPackages.Count -or -not $sourceReferencesRuntime -or -not $vendorPatchOk -or -not $securityPatchOk -or -not $securityVersionsOk -or -not $securityBinaryOk -or -not $noOpenSsl -or -not $symbolsOk -or -not $markerOk) {
     Add-Check 'codex_in_process_runtime' $false $runtimeEvidence 'CODEX_RUNTIME_EVIDENCE_INCOMPLETE: manifest/lock/source/patch/Android graph/SO marker evidence is incomplete.'
 } else {
     Add-Check 'codex_in_process_runtime' $true $runtimeEvidence
