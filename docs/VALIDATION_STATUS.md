@@ -8,13 +8,13 @@ attached to the release review. Until then it remains **not run** or **blocked**
 | --- | --- | --- |
 | Android Studio Quail 3 toolchain | AI-261 install, JDK 17, SDK 36, NDK 28.2, AVD inventory | **local setup complete; Temurin 17 interactive IDE sync pass; API 29/31/33/34/35/36 AVD install and launch recorded** |
 | `testMockDebugUnitTest`, `lintMockDebug`, `assembleMockDebug` | Local/CI log and mock APK artifact | **local pass (2026-08-21); public main CI pass** |
-| `assembleNativeDebug` JNI packaging | APK contains `lib/arm64-v8a/libusage_ring_codex.so` | **local scaffold pass; not runtime readiness** |
+| `assembleNativeDebug` JNI packaging | APK contains `lib/arm64-v8a/libusage_ring_codex.so` | **local ARM64 runtime package/static pass; physical runtime gate pending** |
 | Responsive widget and quiet notification | API 36 pin/resize, permission, notification panel and manager state | **local mock pass; API 31/33/34/35 launch regression pass; physical device pending** |
-| Rust `fmt`, `clippy`, tests | Local/CI log | **local and public main CI pass: 5/5 tests** |
-| Native Android gate | Sanitized local report; release requires reviewed `docs/evidence/v0.1.0/native-gate.json` | **NO-GO: upstream OpenSSL portability failure and runtime not linked/proven** |
+| Rust `fmt`, `clippy`, tests | Local/CI log | **local fmt and ARM64 check/clippy/build pass; Windows host test is advisory-blocked by pinned upstream PTY ABI types; branch Linux CI pending** |
+| Native Android gate | Sanitized local report; release requires reviewed `docs/evidence/v0.1.0/native-gate.json` | **local static GO (2026-08-21), `release_ready=false`; physical proof and reviewed release evidence remain pending** |
 | Physical-device install/launch/widget smoke | `docs/evidence/v0.1.0/physical-device.json` plus device metadata | **missing** |
-| CycloneDX dependency SBOM and license policy | Gradle `cyclonedxBom` plus `scripts/verify-sbom.ps1` | **local and public main CI pass: 321 components, 3 exact metadata exceptions; release artifact pending** |
-| Cargo dependency license policy | locked `cargo metadata` plus `scripts/verify-cargo-licenses.ps1` | **local and public main CI pass: 41 locked packages** |
+| CycloneDX dependency SBOM and license policy | Gradle `cyclonedxBom` plus `scripts/verify-sbom.ps1` | **local pass: 322 components, 3 exact metadata exceptions; branch CI and release artifact pending** |
+| Cargo dependency license policy | locked `cargo metadata` plus `scripts/verify-cargo-licenses.ps1` | **local pass: 1,134 locked packages; branch CI pending** |
 | Signed APK verification and SHA-256 | Release workflow artifact | **not run** |
 | SBOM and build attestation | Release workflow artifact | **not run** |
 | Fresh install / upgrade / uninstall | Disposable-device checklist | **not run** |
@@ -23,7 +23,8 @@ Do not change a status to pass by editing this table alone. Add reproducible
 evidence, reviewer and date in the release PR. Missing evidence deliberately
 causes the release workflow to stop.
 
-The ordinary CI workflow may upload a `NO-GO` feasibility report while still
-passing its mock/scaffold checks. Only the tag-triggered release workflow runs
-the hard `nativeGate` task, and that task exits non-zero until the Android
-Codex runtime, real login, and physical-device requirements are proven.
+The ordinary CI workflow may pass mock and static ARM64 checks while still
+lacking physical-device evidence. Only the tag-triggered release workflow runs
+the hard `nativeGate` task and the signed-artifact evidence binding; publication
+stops until the Android Codex runtime, real login, and physical-device
+requirements are proven.

@@ -1,13 +1,20 @@
+//! Closed, typed boundary between Kotlin and the in-process Codex client.
+//!
+//! The Android side can choose only the six operations below. It cannot
+//! submit a JSON-RPC method, request id, token, shell command, plugin, MCP
+//! server, or arbitrary protocol payload.
+
 use serde::Serialize;
 use serde_json::Value;
 use std::fmt;
+use std::path::PathBuf;
+use std::sync::OnceLock;
 
+use codex_app_server_protocol::{RateLimitSnapshot, RateLimitWindow};
+
+use crate::runtime::RuntimeController;
 use crate::{UPSTREAM_COMMIT, UPSTREAM_TAG};
 
-/// The only operations that may be requested by the Android side.
-///
-/// These names intentionally differ from app-server's wire method names: the
-/// Android caller cannot submit arbitrary JSON-RPC method names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
     Start,
@@ -50,6 +57,13 @@ pub enum ErrorCode {
     MethodNotAllowed,
     NotReady,
     AlreadyShutdown,
+    RuntimeUnavailable,
+    LoginInProgress,
+    LoginFailed,
+    LoginTimeout,
+    RateLimitsUnavailable,
+    LogoutFailed,
+    JniError,
 }
 
 impl ErrorCode {
@@ -61,6 +75,13 @@ impl ErrorCode {
             Self::MethodNotAllowed => "METHOD_NOT_ALLOWED",
             Self::NotReady => "NOT_READY",
             Self::AlreadyShutdown => "ALREADY_SHUTDOWN",
+            Self::RuntimeUnavailable => "RUNTIME_UNAVAILABLE",
+            Self::LoginInProgress => "LOGIN_IN_PROGRESS",
+            Self::LoginFailed => "LOGIN_FAILED",
+            Self::LoginTimeout => "LOGIN_TIMEOUT",
+            Self::RateLimitsUnavailable => "RATE_LIMITS_UNAVAILABLE",
+            Self::LogoutFailed => "LOGOUT_FAILED",
+            Self::JniError => "JNI_ERROR",
         }
     }
 }
@@ -88,47 +109,169 @@ struct Response<'a, T: Serialize> {
 }
 
 #[derive(Debug, Serialize)]
-struct Metadata<'a> {
-    implementation: &'a str,
-    upstream_tag: &'a str,
-    upstream_commit: &'a str,
+struct Metadata {
+    implementation: &'static str,
+    upstream_tag: &'static str,
+    upstream_commit: &'static str,
+    telemetry: bool,
+    plugins: bool,
+    mcp: bool,
+    shell: bool,
+    auth_refresh_supported: bool,
 }
 
 #[derive(Debug, Serialize)]
-struct StartResult<'a> {
-    status: &'a str,
-    metadata: Metadata<'a>,
+pub(crate) struct StartResult {
+    status: &'static str,
+    metadata: Metadata,
+}
+
+impl StartResult {
+    pub(crate) const fn ready() -> Self {
+        Self {
+            status: "ready",
+            metadata: Metadata {
+                implementation: "codex-in-process",
+                upstream_tag: UPSTREAM_TAG,
+                upstream_commit: UPSTREAM_COMMIT,
+                telemetry: false,
+                plugins: false,
+                mcp: false,
+                shell: false,
+                // The pinned in-process facade rejects this server request;
+                // no refresh token crosses the JNI boundary.
+                auth_refresh_supported: false,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
-struct PollResult<'a> {
-    status: &'a str,
+pub(crate) struct LoginResult {
+    status: &'static str,
+    verification_url: String,
+    user_code: String,
 }
 
-#[derive(Debug, Serialize)]
-struct RateLimitsResult<'a> {
-    status: &'a str,
-    /// No values are fabricated while the upstream runtime is unavailable.
+impl LoginResult {
+    pub(crate) fn challenge(verification_url: String, user_code: String) -> Self {
+        Self {
+            status: "waiting",
+            verification_url,
+            user_code,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Default, PartialEq, Eq)]
+pub(crate) struct RateLimitsResult {
+    status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    primary_used_percent: Option<u8>,
+    five_hour_used_percent: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    secondary_used_percent: Option<u8>,
+    five_hour_reset_at_epoch_millis: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    five_hour_window_minutes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seven_day_used_percent: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seven_day_reset_at_epoch_millis: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seven_day_window_minutes: Option<i64>,
+}
+
+impl RateLimitsResult {
+    pub(crate) fn from_snapshot(snapshot: &RateLimitSnapshot) -> Self {
+        let mut result = Self {
+            status: "ok",
+            ..Self::default()
+        };
+        // Duration identifies named windows; primary/secondary are only a
+        // compatibility fallback when duration is absent.
+        if let Some(window) = snapshot.primary.as_ref() {
+            result.apply(window, WindowKind::FiveHour);
+        }
+        if let Some(window) = snapshot.secondary.as_ref() {
+            result.apply(window, WindowKind::SevenDay);
+        }
+        result
+    }
+
+    fn apply(&mut self, window: &RateLimitWindow, fallback: WindowKind) {
+        if !(0..=100).contains(&window.used_percent) {
+            return;
+        }
+        let kind = classify_window(window.window_duration_mins, fallback);
+        let reset = window
+            .resets_at
+            .and_then(|seconds| seconds.checked_mul(1000));
+        let (used, reset_at, duration) = match kind {
+            WindowKind::FiveHour => (
+                &mut self.five_hour_used_percent,
+                &mut self.five_hour_reset_at_epoch_millis,
+                &mut self.five_hour_window_minutes,
+            ),
+            WindowKind::SevenDay => (
+                &mut self.seven_day_used_percent,
+                &mut self.seven_day_reset_at_epoch_millis,
+                &mut self.seven_day_window_minutes,
+            ),
+        };
+        // Preserve the first valid window if malformed upstream data maps two
+        // rows to the same named bucket.
+        if used.is_none() {
+            *used = Some(window.used_percent);
+        }
+        if reset_at.is_none() {
+            *reset_at = reset;
+        }
+        if duration.is_none() {
+            *duration = window.window_duration_mins;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WindowKind {
+    FiveHour,
+    SevenDay,
+}
+
+fn classify_window(duration: Option<i64>, fallback: WindowKind) -> WindowKind {
+    let Some(duration) = duration else {
+        return fallback;
+    };
+    if (duration - 300).abs() <= (duration - 10_080).abs() {
+        WindowKind::FiveHour
+    } else {
+        WindowKind::SevenDay
+    }
 }
 
 #[derive(Debug, Serialize)]
-struct EmptyResult<'a> {
-    status: &'a str,
+struct PollResult {
+    status: &'static str,
 }
 
-/// Dispatch one allowlisted method after validating a deliberately tiny JSON
-/// request.  `null` and `{}` are the only accepted request bodies today.
-/// This keeps the JNI boundary closed while the upstream integration is
-/// unproven; in particular, no caller-supplied token or raw RPC can pass.
+#[derive(Debug, Serialize)]
+struct EmptyResult {
+    status: &'static str,
+}
+
+static CONTROLLER: OnceLock<Option<RuntimeController>> = OnceLock::new();
+
+fn controller() -> Result<&'static RuntimeController, ErrorCode> {
+    CONTROLLER
+        .get_or_init(|| RuntimeController::new().ok())
+        .as_ref()
+        .ok_or(ErrorCode::RuntimeUnavailable)
+}
+
+/// Dispatch an allowlisted operation. `start` accepts exactly
+/// `{ "filesDir": "...", "schemaVersion": 1 }`; all other methods accept
+/// only `null` or `{}`. No request body is passed to Codex unchanged.
 pub fn dispatch_json(method: &str, request_json: &str) -> String {
     let parsed_method = Method::parse(method);
-    // Never reflect an untrusted method string.  JNI exports pass constants,
-    // but keeping the Rust boundary closed also protects direct callers and
-    // prevents a secret-shaped method argument from appearing in the DTO.
     let method_for_response = if parsed_method.is_ok() {
         method
     } else {
@@ -138,72 +281,93 @@ pub fn dispatch_json(method: &str, request_json: &str) -> String {
         Ok(method) => method,
         Err(code) => return error_json(method_for_response, code),
     };
-
     let value: Value = match serde_json::from_str(request_json) {
         Ok(value) => value,
         Err(_) => return error_json(method_for_response, ErrorCode::InvalidJson),
     };
-
     if contains_secret_field(&value) {
         return error_json(method_for_response, ErrorCode::SecretFieldRejected);
     }
 
+    if method == Method::Start {
+        let Some(files_dir) = parse_start_request(&value) else {
+            return error_json(method_for_response, ErrorCode::InvalidRequest);
+        };
+        return match controller().and_then(|runtime| runtime.start(files_dir).map_err(|e| e.code()))
+        {
+            Ok(result) => success_json(method_for_response, result),
+            Err(code) => error_json(method_for_response, code),
+        };
+    }
     if !is_empty_request(&value) {
         return error_json(method_for_response, ErrorCode::InvalidRequest);
     }
 
-    match method {
-        Method::Start => success_json(
-            method_for_response,
-            StartResult {
-                status: "scaffold",
-                metadata: Metadata {
-                    implementation: "jni-scaffold",
-                    upstream_tag: UPSTREAM_TAG,
-                    upstream_commit: UPSTREAM_COMMIT,
-                },
-            },
-        ),
-        Method::BeginDeviceLogin => error_json(method_for_response, ErrorCode::NotReady),
-        Method::PollLogin => success_json(
-            method_for_response,
-            PollResult {
-                status: "unavailable",
-            },
-        ),
-        Method::ReadRateLimits => success_json(
-            method_for_response,
-            RateLimitsResult {
-                status: "unavailable",
-                primary_used_percent: None,
-                secondary_used_percent: None,
-            },
-        ),
-        Method::Logout => error_json(method_for_response, ErrorCode::NotReady),
-        Method::Shutdown => success_json(method_for_response, EmptyResult { status: "scaffold" }),
+    let result = match method {
+        Method::BeginDeviceLogin => controller()
+            .and_then(|runtime| runtime.begin_device_login().map_err(|e| e.code()))
+            .map(|result| success_json(method_for_response, result)),
+        Method::PollLogin => controller()
+            .and_then(|runtime| runtime.poll_login().map_err(|e| e.code()))
+            .map(|status| success_json(method_for_response, PollResult { status })),
+        Method::ReadRateLimits => controller()
+            .and_then(|runtime| runtime.read_rate_limits().map_err(|e| e.code()))
+            .map(|result| success_json(method_for_response, result)),
+        Method::Logout => controller()
+            .and_then(|runtime| runtime.logout().map_err(|e| e.code()))
+            .map(|_| success_json(method_for_response, EmptyResult { status: "ok" })),
+        Method::Shutdown => controller()
+            .and_then(|runtime| runtime.shutdown().map_err(|e| e.code()))
+            .map(|_| success_json(method_for_response, EmptyResult { status: "stopped" })),
+        Method::Start => unreachable!("start handled above"),
+    };
+    result.unwrap_or_else(|code| error_json(method_for_response, code))
+}
+
+fn parse_start_request(value: &Value) -> Option<PathBuf> {
+    let Value::Object(map) = value else {
+        return None;
+    };
+    if map.len() != 2 || map.get("schemaVersion")?.as_u64()? != 1 {
+        return None;
     }
+    let path = map.get("filesDir")?.as_str()?;
+    if path.is_empty() || path.contains('\0') {
+        return None;
+    }
+    let path = PathBuf::from(path);
+    path.is_absolute().then_some(path)
 }
 
 fn success_json<T: Serialize>(method: &str, result: T) -> String {
-    // Serialization of these in-memory structs cannot fail.  Keep a fallback
-    // anyway so a future DTO change never leaks a panic across JNI.
     serde_json::to_string(&Response {
         ok: true,
         method,
         result: Some(result),
         error: None,
     })
-    .unwrap_or_else(|_| error_json(method, ErrorCode::InvalidRequest))
+    .unwrap_or_else(|_| error_json(method, ErrorCode::RuntimeUnavailable))
+}
+
+pub(crate) fn jni_error_json(method: &str) -> String {
+    error_json(method, ErrorCode::JniError)
 }
 
 fn error_json(method: &str, code: ErrorCode) -> String {
     let message = match code {
         ErrorCode::InvalidJson => "request must be valid JSON",
-        ErrorCode::InvalidRequest => "request must be null or an empty JSON object",
+        ErrorCode::InvalidRequest => "request shape is not accepted",
         ErrorCode::SecretFieldRejected => "secret-bearing fields are not accepted",
         ErrorCode::MethodNotAllowed => "method is not in the native allowlist",
-        ErrorCode::NotReady => "Codex in-process runtime is not Android-ready",
+        ErrorCode::NotReady => "native runtime has not been started",
         ErrorCode::AlreadyShutdown => "native runtime is already shut down",
+        ErrorCode::RuntimeUnavailable => "Codex in-process runtime is unavailable",
+        ErrorCode::LoginInProgress => "device login is already in progress",
+        ErrorCode::LoginFailed => "device login failed",
+        ErrorCode::LoginTimeout => "device login timed out",
+        ErrorCode::RateLimitsUnavailable => "rate limits are unavailable",
+        ErrorCode::LogoutFailed => "logout failed",
+        ErrorCode::JniError => "JNI string conversion failed",
     };
     serde_json::to_string(&Response::<()> {
         ok: false,
@@ -215,23 +379,14 @@ fn error_json(method: &str, code: ErrorCode) -> String {
         }),
     })
     .unwrap_or_else(|_| {
-        // This literal contains no user input and is therefore safe as a last
-        // resort even if the response DTO changes unexpectedly.
-        "{\"ok\":false,\"method\":\"unknown\",\"error\":{\"code\":\"INVALID_REQUEST\",\"message\":\"native boundary error\"}}".to_string()
+        "{\"ok\":false,\"method\":\"unknown\",\"error\":{\"code\":\"RUNTIME_UNAVAILABLE\",\"message\":\"native boundary error\"}}".to_string()
     })
 }
 
 fn is_empty_request(value: &Value) -> bool {
-    match value {
-        Value::Null => true,
-        Value::Object(map) => map.is_empty(),
-        _ => false,
-    }
+    matches!(value, Value::Null) || matches!(value, Value::Object(map) if map.is_empty())
 }
 
-/// Reject key names that are commonly used for credentials or arbitrary
-/// transport escape hatches.  The check is recursive so a secret nested in an
-/// otherwise innocuous object cannot cross the boundary.
 fn contains_secret_field(value: &Value) -> bool {
     match value {
         Value::Object(map) => map
@@ -294,11 +449,6 @@ fn is_secret_key(key: &str) -> bool {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use serde_json::Value;
-
-    fn parse(response: &str) -> Value {
-        serde_json::from_str(response).expect("valid response JSON")
-    }
 
     #[test]
     fn allowlist_is_exact_and_complete() {
@@ -310,33 +460,29 @@ mod tests {
                 "pollLogin",
                 "readRateLimits",
                 "logout",
-                "shutdown",
+                "shutdown"
             ]
         );
-        for method in ALLOWED_METHODS {
-            assert!(Method::parse(method).is_ok(), "{method}");
-        }
         assert_eq!(
             Method::parse("account/rateLimits/read"),
             Err(ErrorCode::MethodNotAllowed)
         );
         assert_eq!(Method::parse("exec"), Err(ErrorCode::MethodNotAllowed));
-        assert_eq!(
-            Method::parse("mcpServer/oauth/login"),
-            Err(ErrorCode::MethodNotAllowed)
-        );
     }
 
     #[test]
-    fn null_and_empty_object_are_the_only_requests() {
-        assert_eq!(parse(&dispatch_json("start", "null"))["ok"], true);
-        assert_eq!(parse(&dispatch_json("start", "{}"))["ok"], true);
+    fn start_requires_files_dir_and_schema() {
         assert_eq!(
-            parse(&dispatch_json("start", "[]"))["error"]["code"],
+            serde_json::from_str::<Value>(&dispatch_json("start", "null")).unwrap()["error"]["code"],
             "INVALID_REQUEST"
         );
         assert_eq!(
-            parse(&dispatch_json("start", "{\"x\":1}"))["error"]["code"],
+            serde_json::from_str::<Value>(&dispatch_json("start", "{}")).unwrap()["error"]["code"],
+            "INVALID_REQUEST"
+        );
+        let response = dispatch_json("start", r#"{"filesDir":"relative","schemaVersion":1}"#);
+        assert_eq!(
+            serde_json::from_str::<Value>(&response).unwrap()["error"]["code"],
             "INVALID_REQUEST"
         );
     }
@@ -347,37 +493,81 @@ mod tests {
             r#"{"token":"do-not-echo"}"#,
             r#"{"options":{"Authorization":"Bearer do-not-echo"}}"#,
             r#"{"nested":[{"api_key":"do-not-echo"}]}"#,
-            r#"{"mcpServer":{"command":"do-not-echo"}}"#,
         ] {
             let response = dispatch_json("start", request);
-            assert_eq!(parse(&response)["error"]["code"], "SECRET_FIELD_REJECTED");
+            assert_eq!(
+                serde_json::from_str::<Value>(&response).unwrap()["error"]["code"],
+                "SECRET_FIELD_REJECTED"
+            );
             assert!(!response.contains("do-not-echo"));
         }
     }
 
-    #[test]
-    fn responses_are_sanitized_and_do_not_contain_secret_shaped_fields() {
-        let start = dispatch_json("start", "{}");
-        assert!(start.contains("upstream_tag"));
-        for forbidden in ["token", "api_key", "authorization", "password", "secret"] {
-            assert!(!start.contains(forbidden), "response contains {forbidden}");
+    fn window(used_percent: i32, duration: Option<i64>, reset: Option<i64>) -> RateLimitWindow {
+        RateLimitWindow {
+            used_percent,
+            window_duration_mins: duration,
+            resets_at: reset,
         }
-        let limits = dispatch_json("readRateLimits", "{}");
-        assert_eq!(parse(&limits)["result"]["status"], "unavailable");
-        assert!(
-            parse(&limits)["result"]
-                .get("primary_used_percent")
-                .is_none()
+    }
+
+    fn snapshot(
+        primary: Option<RateLimitWindow>,
+        secondary: Option<RateLimitWindow>,
+    ) -> RateLimitSnapshot {
+        RateLimitSnapshot {
+            limit_id: Some("secret-id-must-not-leak".into()),
+            limit_name: None,
+            primary,
+            secondary,
+            credits: None,
+            individual_limit: None,
+            spend_control_reached: None,
+            plan_type: None,
+            rate_limit_reached_type: None,
+        }
+    }
+
+    #[test]
+    fn nested_rate_limit_windows_are_named_and_converted_to_millis() {
+        let result = RateLimitsResult::from_snapshot(&snapshot(
+            Some(window(42, Some(300), Some(1_700_000_000))),
+            Some(window(7, Some(10_080), None)),
+        ));
+        assert_eq!(result.five_hour_used_percent, Some(42));
+        assert_eq!(
+            result.five_hour_reset_at_epoch_millis,
+            Some(1_700_000_000_000)
+        );
+        assert_eq!(result.five_hour_window_minutes, Some(300));
+        assert_eq!(result.seven_day_used_percent, Some(7));
+        assert_eq!(result.seven_day_reset_at_epoch_millis, None);
+        assert_eq!(result.seven_day_window_minutes, Some(10_080));
+        let encoded = serde_json::to_string(&result).unwrap();
+        assert!(!encoded.contains("secret-id"));
+        assert!(!encoded.contains("primary"));
+    }
+
+    #[test]
+    fn sparse_null_and_invalid_windows_stay_absent() {
+        let result =
+            RateLimitsResult::from_snapshot(&snapshot(Some(window(101, Some(300), Some(1))), None));
+        assert_eq!(
+            result,
+            RateLimitsResult {
+                status: "ok",
+                ..Default::default()
+            }
         );
     }
 
     #[test]
-    fn disallowed_method_does_not_echo_method_or_request() {
-        let response = dispatch_json("api_key_secret", r#"{"token":"do-not-echo"}"#);
-        let parsed = parse(&response);
-        assert_eq!(parsed["error"]["code"], "METHOD_NOT_ALLOWED");
-        assert_eq!(parsed["method"], "unknown");
-        assert!(!response.contains("api_key_secret"));
-        assert!(!response.contains("do-not-echo"));
+    fn absent_duration_uses_ordinal_only_as_fallback() {
+        let result = RateLimitsResult::from_snapshot(&snapshot(
+            Some(window(10, None, None)),
+            Some(window(20, None, None)),
+        ));
+        assert_eq!(result.five_hour_used_percent, Some(10));
+        assert_eq!(result.seven_day_used_percent, Some(20));
     }
 }

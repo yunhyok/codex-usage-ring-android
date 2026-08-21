@@ -13,8 +13,15 @@ working tree that has not passed the hard native gate.
 - [ ] Run Rust `fmt --check`, `clippy -- -D warnings`, and native tests.
 - [ ] Run the native gate on the release/native path. A mock build is not a
       substitute.
-- [ ] Record a physical-device install, launch, widget placement/refresh, and
-      uninstall smoke test in `docs/evidence/v0.1.0/physical-device.json`.
+- [ ] Record the complete physical-device matrix in
+      `docs/evidence/v0.1.0/physical-device.json`: native load, Android system
+      TLS, device-code login, restart/token refresh, process recovery, real
+      rate-limit read, 25 refreshes, widget resize, notification dismissal and
+      restoration, offline recovery, logout/re-login, reboot recovery,
+      secret-log scan, plugin/MCP suppression, and uninstall.
+      Include the exact tagged source commit and SHA-256 of the APK used for the
+      device run; the release workflow verifies the source binding and digest
+      format, then reports the final signed APK hash separately.
 - [ ] Review permissions and APK contents; verify that no debug certificate,
       unexpected network permission, or secret is present.
 
@@ -27,8 +34,9 @@ true:
    repository.
 2. The native gate job passed and
    `docs/evidence/v0.1.0/native-gate.json` records `status: pass`.
-3. Physical-device evidence exists, records `status: pass`, and includes a
-   device model, Android API level, test date, and reviewer.
+3. Physical-device evidence exists, records `status: pass`, includes a device
+   model, Android API level, test date, and reviewer, and records `pass` for
+   every physical-device check listed above.
 4. External signing secrets are present. The workflow never creates a key.
 5. The APK is signed, verifiable, and hashed with SHA-256.
 6. An SBOM and GitHub build attestation are generated and uploaded.

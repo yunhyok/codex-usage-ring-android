@@ -12,9 +12,24 @@ name = "usage_ring_codex"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-jni = { version = "0.21", default-features = false }
+jni = { version = "0.22", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# The runtime is consumed directly from the pinned public commit.  Keeping
+# this as a git dependency lets Cargo lock every transitive crate without
+# copying the 500+ MiB upstream workspace into this repository.
+codex-app-server = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-app-server" }
+codex-app-server-client = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-app-server-client" }
+codex-app-server-protocol = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-app-server-protocol" }
+codex-arg0 = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-arg0" }
+codex-config = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-config" }
+codex-feedback = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-feedback" }
+codex-protocol = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-protocol" }
+toml = "0.9"
+tokio = { version = "1", features = ["rt", "time"] }
+codex-http-client = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-http-client" }
+rustls-platform-verifier = { version = "0.7.0", default-features = false }
 
 [dev-dependencies]
 pretty_assertions = "1"
@@ -24,3 +39,15 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 debug = "line-tables-only"
+
+[patch.crates-io]
+reqwest = { path = "../third_party/openai-codex/patches/reqwest-0.12.28" }
+sentry = { path = "../third_party/openai-codex/patches/sentry-0.46.2" }
+# v0.148.0 pins OpenAI's tungstenite fork because the upstream crate's
+# deflate/proxy feature set is not published for the exact 0.27 API.  The
+# patch is part of the upstream commit's own Cargo workspace configuration.
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }
+tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186" }
+
+[patch."https://github.com/openai/codex.git"]
+codex-app-server = { path = "../third_party/openai-codex/patches/app-server" }

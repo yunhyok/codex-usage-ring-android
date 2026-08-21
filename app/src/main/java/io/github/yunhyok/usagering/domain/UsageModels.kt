@@ -8,6 +8,7 @@ enum class UsageWindow { FIVE_HOUR, SEVEN_DAY }
 data class UsageWindowData(
     val usedPercent: Double? = null,
     val resetAtEpochMillis: Long? = null,
+    val windowMinutes: Long? = null,
 )
 
 data class UsageSnapshot(
@@ -44,6 +45,7 @@ fun mergeSparse(previous: UsageSnapshot?, patch: UsageSnapshotPatch, nowEpochMil
         else -> UsageWindowData(
             usedPercent = incoming.usedPercent ?: old.usedPercent,
             resetAtEpochMillis = incoming.resetAtEpochMillis ?: old.resetAtEpochMillis,
+            windowMinutes = incoming.windowMinutes ?: old.windowMinutes,
         )
     }
     return UsageSnapshot(

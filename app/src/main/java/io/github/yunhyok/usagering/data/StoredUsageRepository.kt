@@ -18,8 +18,10 @@ class StoredUsageRepository(private val context: Context, private val source: Us
     private object Keys {
         val fiveUsed = doublePreferencesKey("five_used")
         val fiveReset = longPreferencesKey("five_reset")
+        val fiveWindow = longPreferencesKey("five_window_minutes")
         val sevenUsed = doublePreferencesKey("seven_used")
         val sevenReset = longPreferencesKey("seven_reset")
+        val sevenWindow = longPreferencesKey("seven_window_minutes")
         val captured = longPreferencesKey("captured")
         val error = booleanPreferencesKey("error")
     }
@@ -28,22 +30,26 @@ class StoredUsageRepository(private val context: Context, private val source: Us
         val values = context.usageDataStore.data.first()
         val captured = values[Keys.captured] ?: return null
         return UsageSnapshot(
-            fiveHour = if (values[Keys.fiveUsed] != null || values[Keys.fiveReset] != null)
-                UsageWindowData(values[Keys.fiveUsed], values[Keys.fiveReset]) else null,
-            sevenDay = if (values[Keys.sevenUsed] != null || values[Keys.sevenReset] != null)
-                UsageWindowData(values[Keys.sevenUsed], values[Keys.sevenReset]) else null,
+            fiveHour = if (values[Keys.fiveUsed] != null || values[Keys.fiveReset] != null || values[Keys.fiveWindow] != null)
+                UsageWindowData(values[Keys.fiveUsed], values[Keys.fiveReset], values[Keys.fiveWindow]) else null,
+            sevenDay = if (values[Keys.sevenUsed] != null || values[Keys.sevenReset] != null || values[Keys.sevenWindow] != null)
+                UsageWindowData(values[Keys.sevenUsed], values[Keys.sevenReset], values[Keys.sevenWindow]) else null,
             capturedAtEpochMillis = captured,
             error = values[Keys.error] ?: false,
         )
     }
 
     override suspend fun refresh(nowEpochMillis: Long): UsageSnapshot {
-        val merged = mergeSparse(read(nowEpochMillis), source.fetch(), nowEpochMillis)
+        val previous = read(nowEpochMillis)
+        val patch = runCatching { source.fetch() }.getOrElse { UsageSnapshotPatch(error = true) }
+        val merged = mergeSparse(previous, patch, nowEpochMillis)
         context.usageDataStore.edit { p ->
             merged.fiveHour?.usedPercent?.let { p[Keys.fiveUsed] = it }
             merged.fiveHour?.resetAtEpochMillis?.let { p[Keys.fiveReset] = it }
+            merged.fiveHour?.windowMinutes?.let { p[Keys.fiveWindow] = it }
             merged.sevenDay?.usedPercent?.let { p[Keys.sevenUsed] = it }
             merged.sevenDay?.resetAtEpochMillis?.let { p[Keys.sevenReset] = it }
+            merged.sevenDay?.windowMinutes?.let { p[Keys.sevenWindow] = it }
             p[Keys.captured] = merged.capturedAtEpochMillis
             p[Keys.error] = merged.error
         }

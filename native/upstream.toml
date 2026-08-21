@@ -1,20 +1,25 @@
-# Public source pin and API notes for the feasibility spike.  This file is
-# metadata only; the upstream repository is intentionally not vendored.
+# Public source pin and reproducibility metadata for the native runtime.
 source = "https://github.com/openai/codex.git"
 tag = "rust-v0.148.0"
 tag_object = "ab52d1794d47d47ecaeb0ec37fc00fa31593ecf3"
 commit = "3ba0f711642a888aec92a611a3f3b2211157ff89"
 
-# No local patch is applied.  A future integration must record every patch
-# here and in native/README.md before it can change the gate to GO.
-patches = []
+# The app-server package is consumed through this reviewed standalone path;
+# the full provenance, Apache notice, and modified-file hashes are in
+# third_party/openai-codex/upstream.toml.
+patches = ["../third_party/openai-codex/patches/app-server-in-process-plugin-skip.patch"]
 
 [runtime]
-# This remains false until Cargo links the pinned app-server client/runtime and
-# the physical Android acceptance matrix proves TLS, auth refresh, and plugin
-# suppression. Metadata or a successful JNI scaffold build cannot flip it.
-linked = false
+# Cargo now links the pinned app-server client/runtime. A physical Android
+# acceptance run is a separate gate and remains pending.
+linked = true
 required_packages = ["codex-app-server", "codex-app-server-client"]
+vendored_app_server = "../third_party/openai-codex/patches/app-server"
+plugin_startup = "Skip"
+plugin_patch_sha256 = "74a7a8529eb05dc117a6e06224fdfe68f498db4b8a01d9d5352e18ab0c5693f3"
+android_tls = "rustls-platform-verifier-0.7.0-TrustManager"
+auth_refresh_supported = false
+physical_device_proof = false
 
 [api]
 in_process_start = "codex-rs/app-server/src/in_process.rs::start(InProcessStartArgs)"

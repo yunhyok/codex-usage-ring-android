@@ -21,7 +21,7 @@ jobs:
     name: Hard native NO-GO gate
     if: github.repository == 'yunhyok/codex-usage-ring-android'
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,8 +58,8 @@ jobs:
           [[ -f native/Cargo.toml ]] && manifest='native/Cargo.toml'
           test -f "$manifest" || { echo 'Cargo.toml not found'; exit 1; }
           cargo fmt --manifest-path "$manifest" --all -- --check
-          cargo clippy --manifest-path "$manifest" --workspace --all-targets --all-features -- -D warnings
-          cargo test --manifest-path "$manifest" --workspace --all-features
+          cargo clippy --locked --manifest-path "$manifest" --workspace --all-targets --all-features -- -D warnings
+          cargo test --locked --manifest-path "$manifest" --workspace --all-features
       - name: Enforce Cargo license policy
         shell: pwsh
         run: ./scripts/verify-cargo-licenses.ps1
@@ -73,6 +73,24 @@ jobs:
           if ($e.status -ne 'pass' -or [string]::IsNullOrWhiteSpace([string]$e.commit) -or [string]::IsNullOrWhiteSpace([string]$e.run_url)) {
             throw 'native-gate.json must record status=pass, commit, and run_url.'
           }
+          if ([string]$e.commit -notmatch '^[0-9a-fA-F]{40}$' -or $e.commit.ToLowerInvariant() -ne $env:GITHUB_SHA.ToLowerInvariant()) {
+            throw "native-gate.json commit must exactly match the tagged source commit ($env:GITHUB_SHA)."
+          }
+          if ([string]$e.run_url -notmatch '^https://') {
+            throw 'native-gate.json run_url must be an HTTPS review URL.'
+          }
+      - name: Stage the pinned Android verifier AAR
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --locked --format-version 1 --filter-platform aarch64-linux-android --manifest-path native/Cargo.toml | ConvertFrom-Json
+          $package = $metadata.packages | Where-Object name -eq 'rustls-platform-verifier-android' | Select-Object -First 1
+          if ($null -eq $package) { throw 'rustls-platform-verifier-android is missing from Cargo metadata.' }
+          $manifest = Get-Item -LiteralPath $package.manifest_path
+          $version = [string]$package.version
+          $aar = Join-Path $manifest.DirectoryName "maven/rustls/rustls-platform-verifier/$version/rustls-platform-verifier-$version.aar"
+          if (-not (Test-Path -LiteralPath $aar -PathType Leaf)) { throw "Missing pinned verifier AAR: $aar" }
+          $destination = 'native/target/aarch64-linux-android/release/rustls-platform-verifier-android.aar'
+          Copy-Item -LiteralPath $aar -Destination $destination
       - name: Extract native debug symbols
         shell: bash
         run: |
@@ -90,6 +108,7 @@ jobs:
             ${{ env.EVIDENCE_DIR }}/native-gate.json
             native/target/aarch64-linux-android/release/libusage_ring_codex.so
             native/target/aarch64-linux-android/release/libusage_ring_codex.so.dbg
+            native/target/aarch64-linux-android/release/rustls-platform-verifier-android.aar
 
   physical-device:
     name: Physical-device evidence gate
@@ -106,10 +125,34 @@ jobs:
           $path = Join-Path $env:EVIDENCE_DIR 'physical-device.json'
           if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing physical-device evidence: $path" }
           $e = Get-Content -Raw $path | ConvertFrom-Json
-          foreach ($field in @('device_model','android_api','test_date','reviewer','run_url')) {
+          foreach ($field in @('device_model','android_api','test_date','reviewer','run_url','source_commit','apk_sha256')) {
             if ([string]::IsNullOrWhiteSpace([string]$e.$field)) { throw "physical-device.json is missing $field" }
           }
-          foreach ($field in @('install','launch','widget','uninstall')) {
+          if ([string]$e.source_commit -notmatch '^[0-9a-fA-F]{40}$' -or $e.source_commit.ToLowerInvariant() -ne $env:GITHUB_SHA.ToLowerInvariant()) {
+            throw "physical-device.json source_commit must exactly match the tagged source commit ($env:GITHUB_SHA)."
+          }
+          if ([string]$e.apk_sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'physical-device.json apk_sha256 must be a SHA-256 digest.' }
+          if ([string]$e.run_url -notmatch '^https://') { throw 'physical-device.json run_url must be an HTTPS review URL.' }
+          $requiredChecks = @(
+            'install',
+            'launch',
+            'native_load',
+            'tls_system_trust',
+            'device_code_login',
+            'restart_token_refresh',
+            'process_recovery',
+            'rate_limits_read',
+            'refresh_25',
+            'widget_add_resize',
+            'notification_dismiss_restore',
+            'offline_recovery',
+            'logout_relogin',
+            'reboot_recovery',
+            'secret_log_scan',
+            'plugin_mcp_blocked',
+            'uninstall'
+          )
+          foreach ($field in $requiredChecks) {
             if ($e.$field -ne 'pass') { throw "physical-device.json field $field must be pass" }
           }
           if ($e.status -ne 'pass') { throw 'physical-device.json status must be pass' }
@@ -120,7 +163,7 @@ jobs:
     name: Build, sign, verify, SBOM, and attest
     needs: [native-gate, physical-device]
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 90
     environment: prerelease
     permissions:
       contents: read
@@ -155,6 +198,8 @@ jobs:
           mkdir -p native/target/aarch64-linux-android/release
           cp native-gate-artifact/native/target/aarch64-linux-android/release/libusage_ring_codex.so native/target/aarch64-linux-android/release/
           cp native-gate-artifact/native/target/aarch64-linux-android/release/libusage_ring_codex.so.dbg native/target/aarch64-linux-android/release/
+          cp native-gate-artifact/native/target/aarch64-linux-android/release/rustls-platform-verifier-android.aar native/target/aarch64-linux-android/release/
+          echo "RUSTLS_PLATFORM_VERIFIER_AAR=$GITHUB_WORKSPACE/native/target/aarch64-linux-android/release/rustls-platform-verifier-android.aar" >> "$GITHUB_ENV"
       - name: Require external signing secrets
         shell: pwsh
         run: |

@@ -1,0 +1,37 @@
+# Provenance for the small vendored app-server adaptation used by native.
+# The upstream package is Apache-2.0; retain LICENSE/NOTICE beside this file.
+[upstream]
+repository = "https://github.com/openai/codex.git"
+commit = "3ba0f711642a888aec92a611a3f3b2211157ff89"
+tag = "rust-v0.148.0"
+package = "codex-rs/app-server"
+license = "Apache-2.0"
+
+[files."codex-rs/app-server/Cargo.toml"]
+upstream_sha256 = "B485F6BD328CABE20630418AD6F51149813A5652AF2440BFD3C9B07E27E4C0C5"
+patched_sha256 = "DDA0D9D99CB84FBCD10D63A72757FC1677B44A8F7736F3D190DC3BF0C486650D"
+change = "Standalone manifest pins every Codex workspace dependency to the exact upstream commit and removes workspace-only metadata."
+
+[files."codex-rs/app-server/src/in_process.rs"]
+upstream_sha256 = "42F2996E2BBE0EDB233FC23AB1DC4095946BBDCF0505B8ADE600F8132521EB13"
+patched_sha256 = "08BF63958FBF499C538825794BB78EC19ABA76568B2F445ED4CF28BD28527F54"
+change = "PluginStartupTasks::Start is forced to PluginStartupTasks::Skip for the Android account-only facade."
+
+[files."reqwest-0.12.28/Cargo.toml"]
+upstream_sha256 = "23C8A0827AAAC74059965A182C6873990E75AA550E8079D3B51BB95092871205"
+patched_sha256 = "B499D015BA57FBB3B3C8BFC43BEEF040B8E37979901AA2EA7026A4FB53F67A66"
+change = "Remove default-tls and add Android rustls-platform-verifier 0.7.0."
+
+[files."reqwest-0.12.28/src/async_impl/client.rs"]
+upstream_sha256 = "8C30B009838BE2126B90344EF97FB6141AC8BDF695F4E7BB00A3052A707D9B5C"
+patched_sha256 = "3798B0C8FE955D75A8D636135AC6947659D991C78555C5E27823F8BA54011CAB"
+change = "On Android, use rustls-platform-verifier's Java TrustManager when no custom roots are configured."
+
+[files."sentry-0.46.2/Cargo.toml"]
+upstream_sha256 = "F2D8ADB95CE6E0DA6ABB01A8DE5B2D2A757AEF63AC65036E8589D8292F4B9297"
+patched_sha256 = "BE73DC4ED0198DE96D8BE705E5D48481BECB521DA3D04B4E421E357B800A6C93"
+change = "Remove the default sentry transport feature to prevent an unused Android transport dependency."
+
+[patch]
+file = "patches/app-server-in-process-plugin-skip.patch"
+sha256 = "74A7A8529EB05DC117A6E06224FDFE68F498DB4B8A01D9D5352E18AB0C5693F3"

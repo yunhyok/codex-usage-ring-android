@@ -52,13 +52,56 @@ try {
             Stop-Preflight "native-gate evidence is missing '$field'."
         }
     }
+    if ([string]$nativeEvidence.commit -notmatch '^[0-9a-fA-F]{40}$') {
+        Stop-Preflight 'native-gate evidence commit must be a 40-character source commit.'
+    }
+    if ([string]$nativeEvidence.run_url -notmatch '^https://') {
+        Stop-Preflight 'native-gate evidence run_url must be an HTTPS review URL.'
+    }
 
-    foreach ($field in @('device_model', 'android_api', 'test_date', 'reviewer', 'run_url')) {
+    foreach ($field in @('device_model', 'android_api', 'test_date', 'reviewer', 'run_url', 'source_commit', 'apk_sha256')) {
         if ([string]::IsNullOrWhiteSpace([string] $deviceEvidence.$field)) {
             Stop-Preflight "physical-device evidence is missing '$field'."
         }
     }
-    foreach ($field in @('install', 'launch', 'widget', 'uninstall')) {
+    if ([string]$deviceEvidence.source_commit -notmatch '^[0-9a-fA-F]{40}$') {
+        Stop-Preflight 'physical-device evidence source_commit must be a 40-character source commit.'
+    }
+    if ([string]$deviceEvidence.apk_sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        Stop-Preflight 'physical-device evidence apk_sha256 must be a SHA-256 digest.'
+    }
+    if ([string]$deviceEvidence.run_url -notmatch '^https://') {
+        Stop-Preflight 'physical-device evidence run_url must be an HTTPS review URL.'
+    }
+    if ($RequireSigning) {
+        $git = Get-Command git -ErrorAction SilentlyContinue
+        if ($null -eq $git) { Stop-Preflight 'git is required to bind release evidence to the checked-out source commit.' }
+        $head = ((& $git.Source -C $repoRoot rev-parse HEAD 2>&1) -join "`n").Trim()
+        if ($LASTEXITCODE -ne 0 -or $head -notmatch '^[0-9a-fA-F]{40}$') { Stop-Preflight 'could not resolve the checked-out source commit.' }
+        if ($nativeEvidence.commit.ToLowerInvariant() -ne $head.ToLowerInvariant() -or $deviceEvidence.source_commit.ToLowerInvariant() -ne $head.ToLowerInvariant()) {
+            Stop-Preflight 'release evidence is not bound to the checked-out source commit.'
+        }
+    }
+    $requiredDeviceChecks = @(
+        'install',
+        'launch',
+        'native_load',
+        'tls_system_trust',
+        'device_code_login',
+        'restart_token_refresh',
+        'process_recovery',
+        'rate_limits_read',
+        'refresh_25',
+        'widget_add_resize',
+        'notification_dismiss_restore',
+        'offline_recovery',
+        'logout_relogin',
+        'reboot_recovery',
+        'secret_log_scan',
+        'plugin_mcp_blocked',
+        'uninstall'
+    )
+    foreach ($field in $requiredDeviceChecks) {
         if ($deviceEvidence.$field -ne 'pass') {
             Stop-Preflight "physical-device evidence field '$field' must be pass."
         }
@@ -116,6 +159,27 @@ try {
             "targetSdkVersion:'36'"
         )) {
             if (-not $badging.Contains($expected)) { Stop-Preflight "APK badging is missing expected value: $expected" }
+        }
+    }
+
+    $apkAnalyzer = Get-Command apkanalyzer -ErrorAction SilentlyContinue
+    if ($null -eq $apkAnalyzer) {
+        $sdkRoot = [Environment]::GetEnvironmentVariable('ANDROID_HOME')
+        if ([string]::IsNullOrWhiteSpace($sdkRoot)) { $sdkRoot = [Environment]::GetEnvironmentVariable('ANDROID_SDK_ROOT') }
+        if (-not [string]::IsNullOrWhiteSpace($sdkRoot)) {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $sdkRoot 'cmdline-tools') -Filter 'apkanalyzer*' -File -Recurse -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+            if ($null -ne $candidate) { $apkAnalyzer = $candidate }
+        }
+    }
+    if ($null -eq $apkAnalyzer) {
+        if ($RequireSigning) { Stop-Preflight 'apkanalyzer is required to verify the system-trust verifier classes.' }
+        Write-Warning 'apkanalyzer not found; Android verifier class check was not run (non-release/local mode).'
+    } else {
+        $apkAnalyzerPath = if ($apkAnalyzer.PSObject.Properties.Name -contains 'Source') { $apkAnalyzer.Source } else { $apkAnalyzer.FullName }
+        $dexPackages = (& $apkAnalyzerPath dex packages --defined-only $apk 2>&1) -join "`n"
+        if ($LASTEXITCODE -ne 0 -or $dexPackages -notmatch 'org\.rustls\.platformverifier\.CertificateVerifier') {
+            Stop-Preflight 'APK does not contain the pinned Android system-trust verifier classes.'
         }
     }
 

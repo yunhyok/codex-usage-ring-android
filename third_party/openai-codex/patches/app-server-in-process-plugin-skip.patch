@@ -1,0 +1,12 @@
+From 3ba0f711642a888aec92a611a3f3b2211157ff89 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] usage-ring: skip plugin startup in in-process facade
+
+The pinned public facade does not expose PluginStartupTasks in
+InProcessStartArgs. Usage Ring's runtime must not initialize plugin discovery
+or subprocess hosts, even when a hostile config or plugin directory exists.
+
+--- a/codex-rs/app-server/src/in_process.rs
++++ b/codex-rs/app-server/src/in_process.rs
+@@ -479 +479 @@
+-                plugin_startup_tasks: crate::PluginStartupTasks::Start,
++                plugin_startup_tasks: crate::PluginStartupTasks::Skip,

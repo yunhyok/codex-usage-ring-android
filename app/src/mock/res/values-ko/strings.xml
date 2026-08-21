@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="login_device_code_description">mockDebug에서는 실로그인이 의도적으로 비활성화됩니다. 이 빌드는 로컬 시나리오만 사용하며 자격 증명을 수집하지 않습니다.</string>
+</resources>

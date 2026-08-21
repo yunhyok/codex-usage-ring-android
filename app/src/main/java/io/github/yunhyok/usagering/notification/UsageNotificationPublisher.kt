@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.view.View
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import android.widget.RemoteViews
@@ -28,7 +29,6 @@ class UsageNotificationPublisher(private val context: Context) {
             enableVibration(false)
             setSound(null, null)
         })
-        val remaining = selected.remainingPercent ?: 0
         val openApp = PendingIntent.getActivity(
             context, 0, Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -44,7 +44,10 @@ class UsageNotificationPublisher(private val context: Context) {
         val custom = RemoteViews(context.packageName, R.layout.notification_usage).apply {
             setTextViewText(R.id.notification_title, context.getString(R.string.notification_title))
             setTextViewText(R.id.notification_value, exactValue)
-            setProgressBar(R.id.notification_remaining, 100, remaining, false)
+            selected.remainingPercent?.let { remaining ->
+                setViewVisibility(R.id.notification_remaining, View.VISIBLE)
+                setProgressBar(R.id.notification_remaining, 100, remaining, false)
+            } ?: setViewVisibility(R.id.notification_remaining, View.GONE)
         }
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(iconForBucket(statusBucket(selected.remainingPercent)))

@@ -38,6 +38,49 @@ $reviewedMissing = [System.Collections.Generic.HashSet[string]]::new([StringComp
 [void] $reviewedMissing.Add('pkg:maven/javax.annotation/javax.annotation-api@1.3.2?type=jar')
 
 $violations = [System.Collections.Generic.List[string]]::new()
+
+function Test-AllowedLicenseExpression([string] $Expression) {
+    # CycloneDX may encode an SPDX expression in one licenseChoice. Evaluate
+    # AND/OR instead of accepting a matching substring: an unapproved license
+    # required by AND must never be hidden by an approved sibling.
+    if ($allowed.Contains($Expression)) { return $true }
+    $tokens = @([regex]::Matches(($Expression -replace '/', ' OR '), '\(|\)|\bAND\b|\bOR\b|\bWITH\b|[A-Za-z0-9][A-Za-z0-9.+-]*') | ForEach-Object { $_.Value })
+    if ($tokens.Count -eq 0) { return $false }
+    $state = @{ Index = 0; Valid = $true }
+    function Peek-SbomToken { if ($state.Index -ge $tokens.Count) { return $null }; [string]$tokens[$state.Index] }
+    function Take-SbomToken { $value = Peek-SbomToken; if ($null -ne $value) { [void]($state.Index++) }; $value }
+    function Parse-SbomPrimary {
+        if ((Peek-SbomToken) -eq '(') {
+            [void](Take-SbomToken); $value = Parse-SbomOr
+            if ((Take-SbomToken) -ne ')') { $state.Valid = $false }
+            return $value
+        }
+        $id = Take-SbomToken
+        if ([string]::IsNullOrWhiteSpace($id) -or $id -in @('AND','OR','WITH',')')) { $state.Valid = $false; return $false }
+        $ok = $allowed.Contains($id)
+        if ((Peek-SbomToken) -eq 'WITH') {
+            [void](Take-SbomToken); $exception = Take-SbomToken
+            $ok = $ok -and $id -eq 'Apache-2.0' -and $exception -eq 'LLVM-exception'
+        }
+        $ok
+    }
+    function Parse-SbomAnd { $value = Parse-SbomPrimary; while ((Peek-SbomToken) -eq 'AND') { [void](Take-SbomToken); $right = Parse-SbomPrimary; $value = $value -and $right }; $value }
+    function Parse-SbomOr { $value = Parse-SbomAnd; while ((Peek-SbomToken) -eq 'OR') { [void](Take-SbomToken); $right = Parse-SbomAnd; $value = $value -or $right }; $value }
+    $result = Parse-SbomOr
+    return $state.Valid -and $state.Index -eq $tokens.Count -and $result
+}
+
+foreach ($case in @(
+    @{ Expression = 'MIT OR GPL-3.0-only'; Expected = $true },
+    @{ Expression = 'MIT AND BSD-3-Clause'; Expected = $true },
+    @{ Expression = 'MIT AND GPL-3.0-only'; Expected = $false },
+    @{ Expression = 'Apache-2.0 WITH LLVM-exception'; Expected = $true }
+)) {
+    if ((Test-AllowedLicenseExpression $case.Expression) -ne $case.Expected) {
+        throw "internal SPDX parser check failed: $($case.Expression)"
+    }
+}
+
 foreach ($component in $components) {
     $licenses = @($component.licenses | ForEach-Object {
         if ($_.license.id) { [string] $_.license.id }
@@ -52,7 +95,7 @@ foreach ($component in $components) {
         continue
     }
 
-    if (-not ($licenses | Where-Object { $allowed.Contains($_) })) {
+    if (-not ($licenses | Where-Object { Test-AllowedLicenseExpression $_ })) {
         $violations.Add("no approved license: $($component.purl) [$($licenses -join ', ')]")
     }
 }

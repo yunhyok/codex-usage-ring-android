@@ -3,8 +3,9 @@
 Usage Ring is an unofficial, independent Android widget for showing a compact
 Codex usage indicator. It is a Codex-only project: the source in this
 repository is the source of truth, and no OpenAI logo or undocumented/private
-API is used. A source build does not need an account; live usage requires the
-official Codex App Server device-code flow once the Android native gate passes.
+API is used. A source build does not need an account; live usage uses the
+official Codex App Server device-code flow and still requires physical-device
+acceptance before this project can publish an APK.
 
 > **Unofficial / no endorsement:** Usage Ring is not affiliated with,
 > sponsored by, or endorsed by OpenAI. “Codex” identifies the compatible usage
@@ -25,10 +26,13 @@ verification record is intentionally explicit in
 [`docs/VALIDATION_STATUS.md`](docs/VALIDATION_STATUS.md); placeholders are not
 claims that a check passed.
 
-The current native decision is **NO-GO** because the pinned Codex runtime stops
-at an Android OpenSSL portability dependency before it can be linked. The JNI
-boundary and mock app are testable, but no APK release is authorized. See the
-reproducible [`native gate report`](docs/NATIVE_GATE_NO_GO.md).
+The repository retains the earlier native portability **NO-GO** report for
+audit history. The pinned Android runtime now passes the local static native
+gate, but that result explicitly has `release_ready=false`: system TLS,
+device-code authentication, lifecycle recovery, and rate-limit reads still need
+ARM64 physical-device evidence. See the archived
+[`native gate report`](docs/NATIVE_GATE_NO_GO.md) and current
+[`validation status`](docs/VALIDATION_STATUS.md).
 
 ## Quick start
 
@@ -70,9 +74,11 @@ Usage Ring should request only the permissions listed in the app manifest. A
 fresh install must be reviewed against the expected list in
 [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md). The app is designed to keep
 usage data on-device and to avoid analytics, advertising identifiers, contacts,
-location, microphone, camera, and network access unless a future change is
-documented, reviewed, and justified. Do not treat this statement as a promise
-for unreviewed builds: verify the merged manifest and APK before distribution.
+location, microphone, and camera access. Network access is limited by design to
+the official Codex device-login and rate-limit client path; physical-device
+traffic inspection remains a release gate. Do not treat this statement as a
+promise for unreviewed builds: verify the merged manifest and APK before
+distribution.
 
 ## Build variants and release gate
 
