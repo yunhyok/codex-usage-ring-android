@@ -38,6 +38,7 @@ if ($unexpectedJniFixture.Count -ne 1) {
 
 # Android-tool selection fixture: signing/verification must use pinned
 # executable entry points, never a recursively discovered internal jar.
+$ciWorkflowText = Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml') -Raw
 $releaseWorkflowText = Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\release.yml') -Raw
 $releasePreflightText = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\release\preflight.ps1') -Raw
 $devicePreflightText = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\device\physical-device-preflight.ps1') -Raw
@@ -65,6 +66,31 @@ if ($testSignedPayloadText -notmatch 'SortedDictionary\[string,\s*object\].*::ne
 }
 if ($testSignedPayloadText -match '(?i)StartsWith\(\$prefix,\s*\[StringComparison\]::OrdinalIgnoreCase\)') {
     throw 'negative fixture failed: META-INF/ prefix filtering is case-insensitive and can hide a case-distinct payload entry.'
+}
+
+# PR workflow fixture: all CI jobs must build and publish the candidate PR head,
+# not the merge SHA that GitHub exposes as github.sha for pull_request events.
+$candidateExpression = 'github.event.pull_request.head.sha || github.sha'
+$candidateRef = 'ref: ${{ ' + $candidateExpression + ' }}'
+$candidateDefinition = 'CANDIDATE_SHA: ${{ ' + $candidateExpression + ' }}'
+if ($ciWorkflowText -notmatch [regex]::Escape($candidateDefinition)) {
+    throw 'negative fixture failed: CI does not define the PR-head candidate SHA with push fallback.'
+}
+if ([regex]::Matches($ciWorkflowText, [regex]::Escape($candidateRef)).Count -ne 3) {
+    throw 'negative fixture failed: all three CI checkouts must pin the PR-head candidate SHA.'
+}
+foreach ($artifactName in @('android-ci-${{ env.CANDIDATE_SHA }}', 'native-ci-${{ env.CANDIDATE_SHA }}')) {
+    if ($ciWorkflowText -notmatch [regex]::Escape("name: $artifactName")) {
+        throw "negative fixture failed: CI artifact is not keyed by CANDIDATE_SHA ($artifactName)."
+    }
+}
+if ($ciWorkflowText -notmatch [regex]::Escape('-ExpectedSourceCommit $env:CANDIDATE_SHA')) {
+    throw 'negative fixture failed: physical preflight does not use CANDIDATE_SHA.'
+}
+foreach ($artifactName in @('native-ci-${{ steps.evidence.outputs.candidate_commit }}', 'native-ci-${{ needs.physical-device.outputs.candidate_commit }}')) {
+    if ($releaseWorkflowText -notmatch [regex]::Escape("name: $artifactName")) {
+        throw "negative fixture failed: release workflow does not resolve the head-SHA native artifact ($artifactName)."
+    }
 }
 
 # Raw-versus-packaged native fixture: a raw gate hash may differ from the APK

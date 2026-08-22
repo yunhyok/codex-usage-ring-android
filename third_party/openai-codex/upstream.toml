@@ -76,6 +76,6 @@ file = "patches/app-server-device-login-error-category.patch"
 sha256 = "14B1B07F07912F0178BD37DBC6D49A8001F9E76CB333ABB524236B73CBFA5714"
 
 [trees."patches/app-server"]
-file_count = 231
-patched_sha256 = "3BD07B5DF17EF9AF4DDA7CAE82B1DE75F2C3F25E8E52FB4323B2AAB7172A9A86"
-algorithm = "SHA-256 over UTF-8 lines '<file-sha256-lower>  <relative-path-with-forward-slashes>', path-sorted, final newline"
+file_count = 101
+patched_sha256 = "7134F2FB8B28B6505DC14F9060C250244B28909A8829A4FDA064709DCA055972"
+algorithm = "SHA-256 over UTF-8 lines '<file-sha256-lower>  <relative-path-with-forward-slashes>', path-sorted, final newline; ignored tests/ subtree excluded"

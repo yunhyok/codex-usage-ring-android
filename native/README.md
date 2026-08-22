@@ -34,13 +34,15 @@ was resolved to commit
 standalone Apache-2.0 adaptation under
 `../third_party/openai-codex/patches/app-server`; provenance, licenses, the
 current Cargo manifest digest, and a canonical digest over the complete
-vendored build-input tree are recorded in
+shipped vendored build-input tree (excluding the ignored `tests/` subtree) are
+recorded in
 `../third_party/openai-codex/upstream.toml` and
 `../third_party/openai-codex/PATCHES.md`.
 
-The native gate binds the complete app-server source-tree digest (including its
-Cargo manifest) into the exported runtime marker, so a partial or stale
-vendored package cannot satisfy the runtime check. The same provenance record
+The native gate binds the complete shipped app-server source-tree digest
+(including its Cargo manifest and excluding the ignored, unshipped `tests/`
+subtree) into the exported runtime marker, so a partial or stale vendored
+package cannot satisfy the runtime check. The same provenance record
 covers two dependency-only security adaptations
 without changing the Codex tag: a standalone `codex-git-utils` manifest selects
 `gix` 0.83.0, and a patched `rama-dns` 0.3.0-alpha.4 selects Hickory 0.26.1.

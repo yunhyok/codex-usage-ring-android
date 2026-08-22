@@ -353,13 +353,27 @@ function Get-LockedPackageVersion {
     return ''
 }
 function Get-CanonicalSourceTreeHash {
-    param([string]$Root)
+    param(
+        [string]$Root,
+        [string[]]$ExcludedRelativeDirectories = @()
+    )
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return '' }
     $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
     $entries = @(Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File | ForEach-Object {
-        [pscustomobject]@{
-            relative_path = [IO.Path]::GetRelativePath($resolvedRoot, $_.FullName).Replace('\', '/')
-            sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $relative = [IO.Path]::GetRelativePath($resolvedRoot, $_.FullName).Replace('\', '/')
+        $excluded = $false
+        foreach ($directory in $ExcludedRelativeDirectories) {
+            $prefix = ([string]$directory).Trim('/').Replace('\', '/')
+            if ($relative -eq $prefix -or $relative.StartsWith("$prefix/", [StringComparison]::Ordinal)) {
+                $excluded = $true
+                break
+            }
+        }
+        if (-not $excluded) {
+            [pscustomobject]@{
+                relative_path = $relative
+                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
         }
     } | Sort-Object relative_path)
     if ($entries.Count -eq 0) { return '' }
@@ -414,8 +428,8 @@ $expectedPluginPatchHash = '31c11d95092364ba25d5748390252211b2ceb6fa8444d8ff6bfe
 $expectedAndroidInstallationPatchHash = '3922b9110aee8a3e7326c3c0ce8dd3ff36881802d9dfa9290ac85e9da789b8f6'
 $expectedDeviceLoginErrorPatchHash = '14b1b07f07912f0178bd37dbc6d49a8001f9e76cb333abb524236b73cbfa5714'
 $expectedAppServerManifestHash = 'dda0d9d99cb84fbcd10d63a72757fc1677b44a8f7736f3d190dc3bf0c486650d'
-$expectedAppServerSourceTreeFileCount = 231
-$expectedAppServerSourceTreeHash = '3bd07b5df17ef9af4dda7cae82b1de75f2c3f25e8e52fb4323b2aab7172a9a86'
+$expectedAppServerSourceTreeFileCount = 101
+$expectedAppServerSourceTreeHash = '7134f2fb8b28b6505dc14f9060c250244b28909a8829a4fda064709dca055972'
 $expectedInProcessHash = '89250f5ef5dc3501d9bc5768ac6f43477ba36cb2c3e48eefb23c80ff51c4fede'
 $expectedErrorCodeHash = '74ab810d12a116928e5c6af69e36e80d0090be6107fbadc3f30b2ee07905636c'
 $expectedAccountProcessorHash = '0a90c7329e1ab1bf1e97a3556deab80fbbcaca4ecda961ef3198e2832e3b3b94'
@@ -427,8 +441,14 @@ $pluginPatchHash = if (Test-Path -LiteralPath $pluginPatchFile) { (Get-FileHash 
 $androidInstallationPatchHash = if (Test-Path -LiteralPath $androidInstallationPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $androidInstallationPatchFile).Hash.ToLowerInvariant() } else { '' }
 $deviceLoginErrorPatchHash = if (Test-Path -LiteralPath $deviceLoginErrorPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $deviceLoginErrorPatchFile).Hash.ToLowerInvariant() } else { '' }
 $appServerManifestHash = if (Test-Path -LiteralPath $vendorManifest) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorManifest).Hash.ToLowerInvariant() } else { '' }
-$appServerSourceTreeFileCount = if (Test-Path -LiteralPath $vendorAppServer -PathType Container) { @(Get-ChildItem -LiteralPath $vendorAppServer -Recurse -File).Count } else { 0 }
-$appServerSourceTreeHash = Get-CanonicalSourceTreeHash $vendorAppServer
+$appServerSourceTreeExclusions = @('tests')
+$appServerSourceTreeFileCount = if (Test-Path -LiteralPath $vendorAppServer -PathType Container) {
+    @(Get-ChildItem -LiteralPath $vendorAppServer -Recurse -File | Where-Object {
+        $relative = [IO.Path]::GetRelativePath((Resolve-Path -LiteralPath $vendorAppServer).Path, $_.FullName).Replace('\', '/')
+        $relative -ne 'tests' -and -not $relative.StartsWith('tests/', [StringComparison]::Ordinal)
+    }).Count
+} else { 0 }
+$appServerSourceTreeHash = Get-CanonicalSourceTreeHash $vendorAppServer $appServerSourceTreeExclusions
 $inProcessHash = if (Test-Path -LiteralPath $vendorInProcess) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorInProcess).Hash.ToLowerInvariant() } else { '' }
 $errorCodeHash = if (Test-Path -LiteralPath $vendorErrorCode) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorErrorCode).Hash.ToLowerInvariant() } else { '' }
 $accountProcessorHash = if (Test-Path -LiteralPath $vendorAccountProcessor) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorAccountProcessor).Hash.ToLowerInvariant() } else { '' }

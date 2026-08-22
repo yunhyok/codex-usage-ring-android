@@ -96,9 +96,11 @@ in the in-process facade.
   `3ba0f711642a888aec92a611a3f3b2211157ff89` (`rust-v0.148.0`), Apache-2.0.
 * Vendored package: `patches/app-server`; `LICENSE` and `LICENSE-APACHE` are
   retained in that directory.
-* The complete patched build-input tree contains 231 files and has canonical
-  SHA-256 digest
-  `3BD07B5DF17EF9AF4DDA7CAE82B1DE75F2C3F25E8E52FB4323B2AAB7172A9A86`.
+* The complete shipped patched build-input tree contains 101 files and has
+  canonical SHA-256 digest
+  `7134F2FB8B28B6505DC14F9060C250244B28909A8829A4FDA064709DCA055972`.
+  The ignored, unshipped `tests/` subtree is excluded from this count and
+  digest.
   The current vendored `Cargo.toml` digest is
   `DDA0D9D99CB84FBCD10D63A72757FC1677B44A8F7736F3D190DC3BF0C486650D`.
   The native gate binds both values into the runtime marker.
