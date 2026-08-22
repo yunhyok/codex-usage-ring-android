@@ -384,6 +384,9 @@ $securityVersionsOk = @($expectedSecurityVersions.Keys | Where-Object {
 }).Count -eq 0
 $runtimeBlock = [regex]::Match($upstreamText, '(?ms)^\[runtime\]\s*(.*?)(?=^\[|\z)').Groups[1].Value
 $runtimeFlag = [regex]::Match($runtimeBlock, '(?m)^linked\s*=\s*(true|false)\s*$').Groups[1].Value -eq 'true'
+$recordedAppServerManifestHash = [regex]::Match($runtimeBlock, '(?m)^app_server_cargo_manifest_sha256\s*=\s*"([0-9a-fA-F]{64})"\s*$').Groups[1].Value.ToLowerInvariant()
+$recordedAppServerSourceTreeFileCount = [int]([regex]::Match($runtimeBlock, '(?m)^app_server_source_tree_file_count\s*=\s*(\d+)\s*$').Groups[1].Value)
+$recordedAppServerSourceTreeHash = [regex]::Match($runtimeBlock, '(?m)^app_server_source_tree_sha256\s*=\s*"([0-9a-fA-F]{64})"\s*$').Groups[1].Value.ToLowerInvariant()
 $requiredPackages = @('codex-app-server', 'codex-app-server-client')
 $lockedPackages = @($requiredPackages | Where-Object {
     $cargoLockText -match "(?ms)^\[\[package\]\]\s+name\s*=\s*`"$([regex]::Escape($_))`".*?(?=^\[\[package\]\]|\z)"
@@ -397,16 +400,38 @@ $vendorGitUtilsSource = Join-Path $repoRoot 'third_party/openai-codex/patches/co
 $vendorRamaDns = Join-Path $repoRoot 'third_party/openai-codex/patches/rama-dns-0.3.0-alpha.4/Cargo.toml'
 $vendorRamaDnsSource = Join-Path $repoRoot 'third_party/openai-codex/patches/rama-dns-0.3.0-alpha.4/src/hickory.rs'
 $vendorInProcess = Join-Path $vendorAppServer 'src/in_process.rs'
-$patchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-in-process-plugin-skip.patch'
+$vendorErrorCode = Join-Path $vendorAppServer 'src/error_code.rs'
+$vendorAccountProcessor = Join-Path $vendorAppServer 'src/request_processors/account_processor.rs'
+$pluginPatchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-in-process-plugin-skip.patch'
+$androidInstallationPatchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-in-process-android-installation-id.patch'
+$deviceLoginErrorPatchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-device-login-error-category.patch'
 $vendorManifest = Join-Path $vendorAppServer 'Cargo.toml'
 $vendorSourceText = if (Test-Path -LiteralPath $vendorInProcess) { Get-Content -LiteralPath $vendorInProcess -Raw } else { '' }
+$vendorErrorCodeText = if (Test-Path -LiteralPath $vendorErrorCode) { Get-Content -LiteralPath $vendorErrorCode -Raw } else { '' }
+$vendorAccountProcessorText = if (Test-Path -LiteralPath $vendorAccountProcessor) { Get-Content -LiteralPath $vendorAccountProcessor -Raw } else { '' }
 $manifestText = if (Test-Path -LiteralPath $manifest) { Get-Content -LiteralPath $manifest -Raw } else { '' }
-$expectedPatchHash = '74a7a8529eb05dc117a6e06224fdfe68f498db4b8a01d9d5352e18ab0c5693f3'
+$expectedPluginPatchHash = '31c11d95092364ba25d5748390252211b2ceb6fa8444d8ff6bfe81c48bc8d572'
+$expectedAndroidInstallationPatchHash = '3922b9110aee8a3e7326c3c0ce8dd3ff36881802d9dfa9290ac85e9da789b8f6'
+$expectedDeviceLoginErrorPatchHash = '14b1b07f07912f0178bd37dbc6d49a8001f9e76cb333abb524236b73cbfa5714'
+$expectedAppServerManifestHash = 'dda0d9d99cb84fbcd10d63a72757fc1677b44a8f7736f3d190dc3bf0c486650d'
+$expectedAppServerSourceTreeFileCount = 231
+$expectedAppServerSourceTreeHash = '3bd07b5df17ef9af4dda7cae82b1de75f2c3f25e8e52fb4323b2aab7172a9a86'
+$expectedInProcessHash = '89250f5ef5dc3501d9bc5768ac6f43477ba36cb2c3e48eefb23c80ff51c4fede'
+$expectedErrorCodeHash = '74ab810d12a116928e5c6af69e36e80d0090be6107fbadc3f30b2ee07905636c'
+$expectedAccountProcessorHash = '0a90c7329e1ab1bf1e97a3556deab80fbbcaca4ecda961ef3198e2832e3b3b94'
 $expectedGixManifestHash = '44c57496572f5e75382398a7d2bdd9d7898b28e4043917b71ad7cdd0ed0f279a'
 $expectedGixSourceTreeHash = '612b653c5725b1285076a9f8a27461f16464d69cc97a82458c1b790b1ceffa15'
 $expectedDnsManifestHash = '7ac309c4323860cbc77c37ea0cd82aaa62d3716b6e8312b7ca7c4cce5c40d4a7'
 $expectedDnsSourceHash = '9518b743adddbc5a0d54b7587f9d712cf575fe8fad23959c78ca1475016dabf9'
-$patchHash = if (Test-Path -LiteralPath $patchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $patchFile).Hash.ToLowerInvariant() } else { '' }
+$pluginPatchHash = if (Test-Path -LiteralPath $pluginPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $pluginPatchFile).Hash.ToLowerInvariant() } else { '' }
+$androidInstallationPatchHash = if (Test-Path -LiteralPath $androidInstallationPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $androidInstallationPatchFile).Hash.ToLowerInvariant() } else { '' }
+$deviceLoginErrorPatchHash = if (Test-Path -LiteralPath $deviceLoginErrorPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $deviceLoginErrorPatchFile).Hash.ToLowerInvariant() } else { '' }
+$appServerManifestHash = if (Test-Path -LiteralPath $vendorManifest) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorManifest).Hash.ToLowerInvariant() } else { '' }
+$appServerSourceTreeFileCount = if (Test-Path -LiteralPath $vendorAppServer -PathType Container) { @(Get-ChildItem -LiteralPath $vendorAppServer -Recurse -File).Count } else { 0 }
+$appServerSourceTreeHash = Get-CanonicalSourceTreeHash $vendorAppServer
+$inProcessHash = if (Test-Path -LiteralPath $vendorInProcess) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorInProcess).Hash.ToLowerInvariant() } else { '' }
+$errorCodeHash = if (Test-Path -LiteralPath $vendorErrorCode) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorErrorCode).Hash.ToLowerInvariant() } else { '' }
+$accountProcessorHash = if (Test-Path -LiteralPath $vendorAccountProcessor) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorAccountProcessor).Hash.ToLowerInvariant() } else { '' }
 $gixManifestHash = if (Test-Path -LiteralPath $vendorGitUtils) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorGitUtils).Hash.ToLowerInvariant() } else { '' }
 $gixSourceTreeHash = Get-CanonicalSourceTreeHash $vendorGitUtilsSource
 $dnsManifestHash = if (Test-Path -LiteralPath $vendorRamaDns) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorRamaDns).Hash.ToLowerInvariant() } else { '' }
@@ -414,19 +439,36 @@ $dnsSourceHash = if (Test-Path -LiteralPath $vendorRamaDnsSource) { (Get-FileHas
 $vendorPatchOk = (Test-Path -LiteralPath $vendorInProcess) -and
     ($vendorSourceText -match 'plugin_startup_tasks:\s*crate::PluginStartupTasks::Skip') -and
     ($vendorSourceText -notmatch 'plugin_startup_tasks:\s*crate::PluginStartupTasks::Start') -and
+    ($vendorSourceText -match 'resolve_installation_id_without_lock') -and
+    ($vendorSourceText -match 'cfg\(target_os = "android"\)') -and
+    ($vendorErrorCodeText -match 'usageRingCategory') -and
+    ($vendorAccountProcessorText -match 'classify_device_code_start_error') -and
     (Test-Path -LiteralPath $vendorManifest) -and ($manifestText -match 'codex-app-server') -and
-    ($patchHash -eq $expectedPatchHash)
+    ($pluginPatchHash -eq $expectedPluginPatchHash) -and
+    ($androidInstallationPatchHash -eq $expectedAndroidInstallationPatchHash) -and
+    ($deviceLoginErrorPatchHash -eq $expectedDeviceLoginErrorPatchHash) -and
+    ($recordedAppServerManifestHash -eq $expectedAppServerManifestHash) -and
+    ($recordedAppServerSourceTreeFileCount -eq $expectedAppServerSourceTreeFileCount) -and
+    ($recordedAppServerSourceTreeHash -eq $expectedAppServerSourceTreeHash) -and
+    ($appServerManifestHash -eq $expectedAppServerManifestHash) -and
+    ($appServerSourceTreeFileCount -eq $expectedAppServerSourceTreeFileCount) -and
+    ($appServerSourceTreeHash -eq $expectedAppServerSourceTreeHash) -and
+    ($inProcessHash -eq $expectedInProcessHash) -and
+    ($errorCodeHash -eq $expectedErrorCodeHash) -and
+    ($accountProcessorHash -eq $expectedAccountProcessorHash)
 $securityPatchOk = ($gixManifestHash -eq $expectedGixManifestHash) -and
     ($gixSourceTreeHash -eq $expectedGixSourceTreeHash) -and
     ($dnsManifestHash -eq $expectedDnsManifestHash) -and
     ($dnsSourceHash -eq $expectedDnsSourceHash) -and
     ($manifestText -match 'codex-git-utils\s*=\s*\{\s*path\s*=') -and
     ($manifestText -match 'rama-dns\s*=\s*\{\s*path\s*=')
-$runtimeMarker = 'usage-ring:codex-in-process:rust-v0.148.0:3ba0f711642a888aec92a611a3f3b2211157ff89:plugin-patch-sha256=' + $expectedPatchHash + ':gix-manifest-sha256=' + $expectedGixManifestHash + ':gix-source-tree-sha256=' + $expectedGixSourceTreeHash + ':dns-manifest-sha256=' + $expectedDnsManifestHash + ':dns-source-sha256=' + $expectedDnsSourceHash + ':telemetry=false:plugins=false:mcp=false:shell=false'
+$runtimeMarker = 'usage-ring:codex-in-process:rust-v0.148.0:3ba0f711642a888aec92a611a3f3b2211157ff89:plugin-patch-sha256=' + $expectedPluginPatchHash + ':android-installation-id-patch-sha256=' + $expectedAndroidInstallationPatchHash + ':device-login-error-patch-sha256=' + $expectedDeviceLoginErrorPatchHash + ':app-server-cargo-manifest-sha256=' + $expectedAppServerManifestHash + ':app-server-source-tree-sha256=' + $expectedAppServerSourceTreeHash + ':app-server-in-process-sha256=' + $expectedInProcessHash + ':app-server-error-code-sha256=' + $expectedErrorCodeHash + ':app-server-account-processor-sha256=' + $expectedAccountProcessorHash + ':gix-manifest-sha256=' + $expectedGixManifestHash + ':gix-source-tree-sha256=' + $expectedGixSourceTreeHash + ':dns-manifest-sha256=' + $expectedDnsManifestHash + ':dns-source-sha256=' + $expectedDnsSourceHash + ':telemetry=false:plugins=false:mcp=false:shell=false'
 $releaseSo = Join-Path $nativeRoot 'target/aarch64-linux-android/release/libusage_ring_codex.so'
 $soHash = ''
 $soSize = 0
 $soSymbols = @()
+$allDynamicSymbols = @()
+$nativeExports = @()
 $soMarker = ''
 $oldVulnerableStrings = @()
 $llvmNm = if ($clang) { Join-Path (Split-Path -Parent $clang) $(if ($IsWindows) { 'llvm-nm.exe' } else { 'llvm-nm' }) } else { $null }
@@ -436,8 +478,10 @@ if (Test-Path -LiteralPath $releaseSo) {
     $soHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseSo).Hash.ToLowerInvariant()
     $soSize = $soItem.Length
     if ($llvmNm -and (Test-Path -LiteralPath $llvmNm)) {
-        $nmResult = Invoke-Captured $llvmNm @('-D', '--defined-only', $releaseSo) $nativeRoot
-        $soSymbols = @($nmResult.output_tail | Where-Object { $_ -match 'Java_io_github_yunhyok_usagering_data_NativeCodexBridgeNative_(start|beginDeviceLogin|pollLogin|readRateLimits|logout|shutdown)|usage_ring_codex_runtime_marker' })
+        $nmLines = @(& $llvmNm '-D' '--defined-only' $releaseSo 2>&1 | ForEach-Object { $_.ToString() })
+        $allDynamicSymbols = @($nmLines | ForEach-Object {
+            if ($_ -match '\s([A-Za-z_][A-Za-z0-9_]*)\s*$') { $Matches[1] }
+        } | Sort-Object -Unique)
     }
     if ($llvmStrings -and (Test-Path -LiteralPath $llvmStrings)) {
         # llvm-strings emits over a million lines for this fully linked SO;
@@ -469,8 +513,16 @@ $expectedSymbols = @(
     'Java_io_github_yunhyok_usagering_data_NativeCodexBridgeNative_shutdown',
     'usage_ring_codex_runtime_marker'
 )
-$symbolText = $soSymbols -join "`n"
-$symbolsOk = (Test-Path -LiteralPath $releaseSo) -and ($expectedSymbols | Where-Object { $symbolText -notmatch [regex]::Escape($_) }).Count -eq 0
+$expectedJniExports = @($expectedSymbols | Where-Object { $_ -like 'Java_io_github_yunhyok_usagering_data_NativeCodexBridgeNative_*' })
+# Collect every JNI-style dynamic export, not only the expected package/class
+# prefix. This catches a stale/alternate Java package or an overloaded native
+# method that would otherwise evade the narrow prefix filter.
+$allJavaExports = @($allDynamicSymbols | Where-Object { $_ -like 'Java_*' } | Sort-Object -Unique)
+$nativeExports = $allJavaExports
+$soSymbols = @($allDynamicSymbols | Where-Object { $expectedSymbols -contains $_ })
+$unexpectedNativeExports = @($nativeExports | Where-Object { $expectedJniExports -notcontains $_ })
+$missingNativeExports = @($expectedJniExports | Where-Object { $nativeExports -notcontains $_ })
+$symbolsOk = (Test-Path -LiteralPath $releaseSo) -and $allJavaExports.Count -eq $expectedJniExports.Count -and $missingNativeExports.Count -eq 0 -and $unexpectedNativeExports.Count -eq 0 -and ($allDynamicSymbols -contains 'usage_ring_codex_runtime_marker')
 $markerOk = $soMarker -match [regex]::Escape($runtimeMarker)
 $securityBinaryOk = (Test-Path -LiteralPath $releaseSo) -and $oldVulnerableStrings.Count -eq 0
 $noOpenSsl = $false
@@ -488,8 +540,27 @@ $runtimeEvidence = [ordered]@{
     native_source_references_runtime = [bool]$sourceReferencesRuntime
     vendored_app_server = $vendorAppServer
     plugin_startup_skip = [bool]$vendorPatchOk
-    plugin_patch_sha256 = $patchHash
-    expected_plugin_patch_sha256 = $expectedPatchHash
+    plugin_patch_sha256 = $pluginPatchHash
+    expected_plugin_patch_sha256 = $expectedPluginPatchHash
+    android_installation_id_patch_sha256 = $androidInstallationPatchHash
+    expected_android_installation_id_patch_sha256 = $expectedAndroidInstallationPatchHash
+    device_login_error_patch_sha256 = $deviceLoginErrorPatchHash
+    expected_device_login_error_patch_sha256 = $expectedDeviceLoginErrorPatchHash
+    app_server_cargo_manifest_sha256 = $appServerManifestHash
+    expected_app_server_cargo_manifest_sha256 = $expectedAppServerManifestHash
+    recorded_app_server_cargo_manifest_sha256 = $recordedAppServerManifestHash
+    app_server_source_tree_sha256 = $appServerSourceTreeHash
+    expected_app_server_source_tree_sha256 = $expectedAppServerSourceTreeHash
+    app_server_source_tree_file_count = $appServerSourceTreeFileCount
+    expected_app_server_source_tree_file_count = $expectedAppServerSourceTreeFileCount
+    recorded_app_server_source_tree_file_count = $recordedAppServerSourceTreeFileCount
+    recorded_app_server_source_tree_sha256 = $recordedAppServerSourceTreeHash
+    app_server_in_process_sha256 = $inProcessHash
+    expected_app_server_in_process_sha256 = $expectedInProcessHash
+    app_server_error_code_sha256 = $errorCodeHash
+    expected_app_server_error_code_sha256 = $expectedErrorCodeHash
+    app_server_account_processor_sha256 = $accountProcessorHash
+    expected_app_server_account_processor_sha256 = $expectedAccountProcessorHash
     security_patch_hashes = [ordered]@{
         codex_git_utils_manifest = $gixManifestHash
         codex_git_utils_source_tree = $gixSourceTreeHash
@@ -509,6 +580,11 @@ $runtimeEvidence = [ordered]@{
     release_so_size = $soSize
     release_so_sha256 = $soHash
     exported_symbols = $soSymbols
+    native_jni_exports = $nativeExports
+    expected_native_jni_exports = $expectedJniExports
+    all_java_dynamic_exports = $allJavaExports
+    unexpected_native_jni_exports = $unexpectedNativeExports
+    missing_native_jni_exports = $missingNativeExports
     expected_marker = $runtimeMarker
     binary_marker = $soMarker
     binary_marker_match = [bool]$markerOk
@@ -536,6 +612,10 @@ if (-not $runtimeFlag -or $lockedPackages.Count -ne $requiredPackages.Count -or 
 $report.release_ready = $false
 $report.status = if ($report.blockers.Count -eq 0) { 'GO' } else { 'NO-GO' }
 $json = $report | ConvertTo-Json -Depth 8
+$reportParent = Split-Path -Parent $ReportPath
+if (-not [string]::IsNullOrWhiteSpace($reportParent)) {
+    New-Item -ItemType Directory -Path $reportParent -Force | Out-Null
+}
 Set-Content -LiteralPath $ReportPath -Value $json -Encoding utf8
 [Console]::Out.WriteLine($json)
 if ($report.status -ne 'GO') { exit 2 }

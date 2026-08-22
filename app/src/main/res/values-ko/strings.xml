@@ -39,5 +39,10 @@
     <string name="cancel">취소</string>
     <string name="login_authenticated">인증되었습니다. 사용량은 기기에만 보관됩니다.</string>
     <string name="login_failed">로그인에 실패했거나 시간이 초과되었습니다.</string>
+    <string name="login_tls_connection_failed">보안 연결을 설정하지 못했습니다. 네트워크와 기기 시간을 확인한 후 다시 시도하세요.</string>
+    <string name="login_starting">로그인 시작 중…</string>
+    <string name="login_polling_unavailable">로그인 확인을 시작하지 못했습니다. 다시 시도하세요.</string>
+    <string name="cancel_in_progress">취소 중…</string>
+    <string name="logout_in_progress">로그아웃 처리 중…</string>
     <string name="retry">다시 시도</string>
 </resources>

@@ -82,6 +82,7 @@ use codex_config::LoaderOverrides;
 use codex_config::ThreadConfigLoader;
 use codex_core::check_execpolicy_for_warnings;
 use codex_core::config::Config;
+#[cfg(not(target_os = "android"))]
 use codex_core::resolve_installation_id;
 use codex_exec_server::EnvironmentManager;
 use codex_feedback::CodexFeedback;
@@ -89,11 +90,14 @@ use codex_login::AuthManager;
 use codex_protocol::protocol::SessionSource;
 pub use codex_rollout::StateDbHandle;
 pub use codex_state::log_db::LogDbLayer;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 use toml::Value as TomlValue;
 use tracing::warn;
+#[cfg(any(target_os = "android", test))]
+use uuid::Uuid;
 
 const IN_PROCESS_CONNECTION_ID: ConnectionId = ConnectionId(0);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -403,10 +407,55 @@ async fn run_outbound_router(
     }
 }
 
+async fn resolve_in_process_installation_id(codex_home: &AbsolutePathBuf) -> IoResult<String> {
+    #[cfg(target_os = "android")]
+    {
+        resolve_installation_id_without_lock(codex_home).await
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        resolve_installation_id(codex_home).await
+    }
+}
+
+// Android app-private filesystems can reject the advisory file lock used by
+// Codex's desktop installation-id helper. RuntimeController serializes start
+// calls inside this process, so use an atomic app-private replacement instead.
+#[cfg(any(target_os = "android", test))]
+async fn resolve_installation_id_without_lock(codex_home: &AbsolutePathBuf) -> IoResult<String> {
+    const INSTALLATION_ID_FILENAME: &str = "installation_id";
+
+    tokio::fs::create_dir_all(codex_home).await?;
+    let path = codex_home.join(INSTALLATION_ID_FILENAME);
+    if let Ok(contents) = tokio::fs::read_to_string(&path).await
+        && let Ok(existing) = Uuid::parse_str(contents.trim())
+    {
+        return Ok(existing.to_string());
+    }
+
+    let installation_id = Uuid::now_v7().to_string();
+    let temporary_path = codex_home.join(format!(
+        ".{INSTALLATION_ID_FILENAME}.{}.tmp",
+        Uuid::now_v7()
+    ));
+    tokio::fs::write(&temporary_path, installation_id.as_bytes()).await?;
+    let temporary_file = tokio::fs::OpenOptions::new()
+        .read(true)
+        .open(&temporary_path)
+        .await?;
+    temporary_file.sync_all().await?;
+    if let Err(error) = tokio::fs::rename(&temporary_path, &path).await {
+        let _ = tokio::fs::remove_file(&temporary_path).await;
+        return Err(error);
+    }
+
+    Ok(installation_id)
+}
+
 async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClientHandle> {
     args.config.auth_config().validate()?;
     let channel_capacity = args.channel_capacity.max(1);
-    let installation_id = resolve_installation_id(&args.config.codex_home).await?;
+    let installation_id = resolve_in_process_installation_id(&args.config.codex_home).await?;
     let auth_manager =
         AuthManager::shared_from_config(args.config.as_ref(), args.enable_codex_api_key_env)
             .await
@@ -810,6 +859,25 @@ mod tests {
             .await
             .expect("default config should load"),
         }
+    }
+
+    #[tokio::test]
+    async fn installation_id_without_lock_persists_valid_uuid() {
+        let codex_home = TempDir::new().expect("temp dir");
+        let config = build_test_config(codex_home.path()).await;
+        let first = resolve_installation_id_without_lock(&config.codex_home)
+            .await
+            .expect("first installation id");
+        let second = resolve_installation_id_without_lock(&config.codex_home)
+            .await
+            .expect("persisted installation id");
+
+        assert_eq!(first, second);
+        assert!(Uuid::parse_str(&first).is_ok());
+        let persisted = tokio::fs::read_to_string(codex_home.path().join("installation_id"))
+            .await
+            .expect("installation id file");
+        assert_eq!(persisted, first);
     }
 
     async fn start_test_client_with_capacity(

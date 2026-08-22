@@ -7,6 +7,15 @@ or subprocess hosts, even when a hostile config or plugin directory exists.
 
 --- a/codex-rs/app-server/src/in_process.rs
 +++ b/codex-rs/app-server/src/in_process.rs
-@@ -479 +479 @@
+@@ -476,7 +476,10 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
+                 code_mode_session_provider: None,
+                 rpc_transport: AppServerRpcTransport::InProcess,
+                 remote_control_handle: None,
 -                plugin_startup_tasks: crate::PluginStartupTasks::Start,
++                // Local Android hardening patch: force plugin startup off.
++                // Upstream Apache-2.0 source/hash and patch hash are recorded
++                // in third_party/openai-codex/PATCHES.md and upstream.toml.
 +                plugin_startup_tasks: crate::PluginStartupTasks::Skip,
+             }));
+             let mut thread_created_rx = processor.thread_created_receiver();
+             let session = Arc::new(ConnectionSessionState::new());

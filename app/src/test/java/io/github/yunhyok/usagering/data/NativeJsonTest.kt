@@ -41,4 +41,11 @@ class NativeJsonTest {
         val result = NativeJson.poll("""{"ok":true,"method":"pollLogin","result":{"status":"completed"}}""")
         assertEquals(LoginPollResult.Failed("INVALID_RESPONSE"), result)
     }
+
+    @Test fun rejectsRawPollErrorDetailsOutsideNativeAllowlist() {
+        val result = NativeJson.poll(
+            """{"ok":false,"method":"pollLogin","error":{"code":"https://accounts.example.test/?access_token=secret"}}""",
+        )
+        assertEquals(LoginPollResult.Failed("NATIVE_ERROR"), result)
+    }
 }

@@ -28,9 +28,14 @@ claims that a check passed.
 
 The repository retains the earlier native portability **NO-GO** report for
 audit history. The pinned Android runtime now passes the local static native
-gate, but that result explicitly has `release_ready=false`: system TLS,
-device-code authentication, lifecycle recovery, and rate-limit reads still need
-ARM64 physical-device evidence. See the archived
+gate and a local API 36 ARM64 device has passed system TLS/device-code login,
+process recovery, rate-limit reads, 25 refreshes, notification repost, offline
+recovery, physical widget binding/resize options, and the restricted
+runtime-policy check. Logout followed by a fresh device-code login now passes
+on the patched candidate. A physical reboot also preserved authentication, one
+live rate-limit read, scheduled work, and the bound widget. The result still has
+`release_ready=false`: actual token-expiry refresh, final uninstall, and
+reviewed, commit-bound release evidence remain pending. See the archived
 [`native gate report`](docs/NATIVE_GATE_NO_GO.md) and current
 [`validation status`](docs/VALIDATION_STATUS.md).
 
@@ -41,7 +46,8 @@ Prerequisites:
 - Windows 11, macOS, or Linux with Android Studio **Quail 3** (or the exact
   patch selected by the release notes).
 - Android SDK Platform/Build Tools versions declared by the project.
-- JDK 17 (Android Studio's bundled JetBrains Runtime is acceptable).
+- JDK 17 for Gradle (configure the IDE's Gradle JDK explicitly; Android Studio
+  itself may continue to run on its bundled JetBrains Runtime).
 - Rust stable with `rustfmt` and `clippy` components for the native module.
 
 From a clone:
@@ -99,10 +105,13 @@ It never creates a keystore or accepts secrets from files committed to the
 repository. Supply signing credentials through the CI secret store or a secure
 local environment only. The release workflow will publish a GitHub pre-release
 only after every gate passes; see [`.github/workflows/release.yml`](.github/workflows/release.yml).
-The same workflow emits both an SPDX source/APK SBOM and a CycloneDX Gradle
-dependency SBOM; `native/Cargo.lock` pins the Rust dependency graph.
-`scripts/verify-sbom.ps1` fails CI when a component has neither an approved
-license nor an exact reviewed metadata exception;
+The same workflow emits both an SPDX source/APK SBOM and the reviewed
+CycloneDX candidate SBOM; the latter is amended and checked for an explicit
+`rustls-platform-verifier-android` component bound to its pinned source hash.
+`native/Cargo.lock` pins the Rust dependency graph. `scripts/verify-sbom.ps1`
+fails CI when a component has neither an approved license nor an exact reviewed
+metadata exception; `scripts/verify-rustls-vendor.ps1` independently validates
+the vendored verifier's source, license, and provenance files.
 `scripts/verify-cargo-licenses.ps1` independently checks every locked Rust
 package's SPDX expression.
 

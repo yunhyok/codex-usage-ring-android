@@ -1,5 +1,5 @@
 import org.gradle.api.tasks.Sync
-import groovy.json.JsonSlurper
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
@@ -89,35 +89,88 @@ android.sourceSets.getByName("native").jniLibs.srcDir(stagedNativeJni)
 tasks.matching { it.name.startsWith("mergeNative") && it.name.contains("JniLibFolders") }
     .configureEach { dependsOn(stageNativeCodex) }
 
-// rustls-platform-verifier 0.7.0 calls a small Kotlin/Java Android verifier
-// component. Resolve the matching AAR from the exact Cargo.lock package rather
-// than a floating Maven release; the provider is only evaluated for native
-// dependency resolution, so mockDebug remains JNI/verifier independent.
-val nativeVerifierAar = providers.provider {
-    providers.environmentVariable("RUSTLS_PLATFORM_VERIFIER_AAR").orNull?.let { staged ->
-        val stagedFile = file(staged)
-        check(stagedFile.isFile) { "RUSTLS_PLATFORM_VERIFIER_AAR does not exist: $stagedFile" }
-        return@provider stagedFile
-    }
-    val cargo = sequenceOf(
-        providers.environmentVariable("CARGO").orNull,
-        providers.environmentVariable("CARGO_HOME").orNull?.let { file(it).resolve("bin/cargo.exe").path },
-        file(System.getProperty("user.home")).resolve(".cargo/bin/cargo.exe").path,
-        "cargo",
-    ).filterNotNull().firstOrNull { it == "cargo" || file(it).isFile }
-        ?: error("Cargo is required to locate rustls-platform-verifier-android")
-    val metadata = providers.exec {
-        workingDir(rootProject.projectDir)
-        commandLine(cargo, "metadata", "--locked", "--format-version", "1", "--filter-platform", "aarch64-linux-android", "--manifest-path", rootProject.file("native/Cargo.toml").path)
-    }.standardOutput.asText.get()
-    val packages = (JsonSlurper().parseText(metadata) as Map<*, *>)["packages"] as List<*>
-    val pkg = packages.asSequence().map { it as Map<*, *> }.first { it["name"] == "rustls-platform-verifier-android" }
-    val manifest = file(pkg["manifest_path"].toString())
-    val version = pkg["version"].toString()
-    val aar = manifest.parentFile.resolve("maven/rustls/rustls-platform-verifier/$version/rustls-platform-verifier-$version.aar")
-    check(aar.isFile) { "Missing exact rustls-platform-verifier $version AAR: $aar" }
-    aar
+// rustls-platform-verifier source is vendored into the native flavor only.
+// This preserves the JNI package/signature while avoiding Cargo's prebuilt artifact.
+val rustlsVerifierSourceDir = rootProject.file("third_party/rustls-platform-verifier-android/src/main/java")
+check(rustlsVerifierSourceDir.resolve("org/rustls/platformverifier/CertificateVerifier.kt").isFile) {
+    "Vendored rustls-platform-verifier source is missing"
 }
+android.sourceSets.getByName("native").apply {
+    // AGP 9 built-in Kotlin requires additional Kotlin directories to be
+    // registered on AndroidSourceSet.kotlin; Java directories alone do not
+    // feed compileNative*Kotlin.
+    kotlin.directories.add(rustlsVerifierSourceDir.absolutePath)
+    java.directories.add(rustlsVerifierSourceDir.absolutePath)
+}
+
+val verifyRustlsVerifierSource = tasks.register("verifyRustlsPlatformVerifierSource") {
+    val sourceFile = rustlsVerifierSourceDir.resolve("org/rustls/platformverifier/CertificateVerifier.kt")
+    val buildConfigFile = rustlsVerifierSourceDir.resolve("org/rustls/platformverifier/BuildConfig.java")
+    inputs.files(sourceFile, buildConfigFile)
+    doLast {
+        val source = sourceFile.readText()
+        val sha256 = MessageDigest.getInstance("SHA-256").digest(sourceFile.readBytes())
+            .joinToString("") { byte -> "%02x".format(byte) }
+        check(sha256 == "ff38c72887aaabe9c54b582777109a70c29b258c47c347af37a65fe0970635e7") {
+            "Vendored CertificateVerifier.kt hash changed; review provenance and update only with an explicit source adaptation."
+        }
+        val buildConfig = buildConfigFile.readText()
+        val buildConfigSha256 = MessageDigest.getInstance("SHA-256").digest(buildConfigFile.readBytes())
+            .joinToString("") { byte -> "%02x".format(byte) }
+        check(buildConfigSha256 == "92f6fbc924c2675f33e67cf9089b9e75f21610439e785e06b6eae735361d7b8f") {
+            "Vendored platform-verifier BuildConfig.java hash changed; review provenance before building a native variant."
+        }
+        check(buildConfig.contains("package org.rustls.platformverifier;"))
+        check(Regex("public\\s+static\\s+final\\s+boolean\\s+TEST\\s*=\\s*false\\s*;").containsMatchIn(buildConfig)) {
+            "Vendored platform-verifier BuildConfig.TEST must remain false in application builds."
+        }
+        check(source.contains("package org.rustls.platformverifier"))
+        check(source.contains("private fun verifyCertificateChain("))
+        check(source.contains("context: Context"))
+        check(source.contains("serverName: String"))
+        check(source.contains("authMethod: String"))
+        check(source.contains("allowedEkus: Array<String>"))
+        check(source.contains("ocspResponse: ByteArray?"))
+        check(source.contains("time: Long"))
+        check(source.contains("certChain: Array<ByteArray>"))
+        check(source.contains("SOFT_FAIL"))
+        check(source.contains("ONLY_END_ENTITY"))
+        check(source.contains("PREFER_CRLS"))
+        check(!source.contains("NO_FALLBACK"))
+        check(source.contains("if (ocspResponse == null)"))
+        check(source.contains("revocationOptions.add(PKIXRevocationChecker.Option.PREFER_CRLS)"))
+
+        // The Android system trust store can contain a deleted or malformed
+        // anchor at a colliding alias. The loop must advance for both cases;
+        // this source invariant prevents a regression to the old continue-before-
+        // increment infinite loop.
+        val knownRoot = source.substringAfter("fun isKnownRoot").substringBefore("\n    }\n}")
+        check(knownRoot.contains("if (anchor is X509Certificate)"))
+        check(knownRoot.contains("} else if (anchor != null)"))
+        check(knownRoot.contains("i += 1"))
+        check(!knownRoot.contains("continue")) {
+            "isKnownRoot collision scan must not continue before advancing its alias index."
+        }
+    }
+}
+tasks.named("check") { dependsOn(verifyRustlsVerifierSource) }
+
+// Native source integrity is a prerequisite of every native compilation and
+// packaging path, not only the aggregate `check` task. Keep this dependency
+// read-only and attach it after AGP has registered variant tasks to avoid a
+// task graph cycle while covering debug, release, assemble, and bundle flows.
+tasks.configureEach {
+    val nativeTask = name.startsWith("preNative") && name.endsWith("Build") ||
+        name.startsWith("compileNative") ||
+        name.startsWith("mergeNative") ||
+        name.startsWith("packageNative") ||
+        name.startsWith("assembleNative") ||
+        name.startsWith("bundleNative")
+    if (nativeTask && name != verifyRustlsVerifierSource.name) {
+        dependsOn(verifyRustlsVerifierSource)
+    }
+}
+
 
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -131,10 +184,11 @@ dependencies {
     implementation(libs.androidx.glance)
     implementation(libs.androidx.work)
     implementation(libs.androidx.datastore)
-    add("nativeImplementation", files(nativeVerifierAar))
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
     // Android supplies org.json at runtime; pin the JVM implementation so the
     // boundary decoder is exercised by plain unit tests rather than stubs.
     testImplementation("org.json:json:20240303")

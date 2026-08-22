@@ -33,7 +33,7 @@ jobs:
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Run tests, lint, mockDebug, and dependency SBOM
         shell: bash
-        run: ./gradlew --no-daemon --stacktrace testMockDebugUnitTest lintMockDebug assembleMockDebug cyclonedxBom
+        run: ./gradlew --no-daemon --stacktrace testMockDebugUnitTest lintMockDebug assembleMockDebug verifyRustlsPlatformVerifierSource cyclonedxBom
       - name: Enforce dependency license policy
         shell: pwsh
         run: ./scripts/verify-sbom.ps1
@@ -103,7 +103,7 @@ jobs:
       - name: Enforce Cargo license policy
         shell: pwsh
         run: ./scripts/verify-cargo-licenses.ps1
-      - name: Cross-build the JNI boundary for ARM64 Android
+      - name: Configure the ARM64 Android toolchain
         shell: bash
         run: |
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
@@ -126,17 +126,28 @@ jobs:
             echo "AR_aarch64_linux_android=$ar"
             echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$cc"
           } >> "$GITHUB_ENV"
-          cargo build --locked --manifest-path native/Cargo.toml --target aarch64-linux-android --release
-      - name: Package the physical-device candidate APK
+      - name: Hard-gate the exact native candidate binary
+        shell: pwsh
+        run: ./native/gate.ps1 -ReportPath native/gate-report.local.json
+      - name: Extract candidate native debug symbols
         shell: bash
-        run: ./gradlew --no-daemon --stacktrace assembleNativeDebug
+        run: |
+          so='native/target/aarch64-linux-android/release/libusage_ring_codex.so'
+          objcopy="$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objcopy"
+          test -s "$so" && test -x "$objcopy"
+          "$objcopy" --only-keep-debug "$so" "$so.dbg"
+      - name: Package the exact native release and physical-device candidates
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace assembleNativeRelease assembleNativeDebug assembleNativeDebugAndroidTest cyclonedxBom
+      - name: Validate vendored verifier provenance and explicit SBOM component
+        shell: pwsh
+        run: |
+          ./scripts/verify-rustls-vendor.ps1
+          ./scripts/ensure-release-sbom.ps1
+          ./scripts/verify-sbom.ps1 -RequireRustlsVerifier
       - name: Verify the static physical-device candidate
         shell: pwsh
-        run: ./scripts/device/physical-device-preflight.ps1 -PrepareOnly
-      - name: Generate the fail-closed upstream feasibility report
-        continue-on-error: true
-        shell: bash
-        run: ./gradlew --no-daemon --stacktrace nativeGateReport
+        run: ./scripts/device/physical-device-preflight.ps1 -PrepareOnly -ExpectedSourceCommit $env:GITHUB_SHA -ReleaseApkPath 'app/build/outputs/apk/native/release/app-native-release-unsigned.apk' -RawNativeLibraryPath 'native/target/aarch64-linux-android/release/libusage_ring_codex.so' -NdkRoot "$env:ANDROID_NDK_ROOT"
       - name: Upload native reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -148,8 +159,13 @@ jobs:
             **/build/test-results/**
             native/gate-report.local.json
             native/target/aarch64-linux-android/release/libusage_ring_codex.so
+            native/target/aarch64-linux-android/release/libusage_ring_codex.so.dbg
             app/build/outputs/apk/native/debug/app-native-debug.apk
+            app/build/outputs/apk/native/release/app-native-release-unsigned.apk
+            app/build/outputs/apk/androidTest/native/debug/app-native-debug-androidTest.apk
             app/build/reports/physical-device/static-apk.json
+            build/reports/cyclonedx/bom.json
+            build/reports/cyclonedx/bom.xml
 
   supply-chain:
     name: Secret scan and dependency review
@@ -169,6 +185,9 @@ jobs:
           GITLEAKS_CONFIG: .gitleaks.toml
           GITLEAKS_ENABLE_COMMENTS: "false"
           GITLEAKS_VERSION: 8.30.1
+      - name: Run fail-closed supply-chain fixtures
+        shell: pwsh
+        run: ./scripts/release/test-supply-chain.ps1
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
         # v5 runs on the Node 24 runtime. Keep the immutable commit pin so a

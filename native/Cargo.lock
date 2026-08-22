@@ -12431,6 +12431,7 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-arg0",
  "codex-config",
+ "codex-features",
  "codex-feedback",
  "codex-http-client",
  "codex-protocol",

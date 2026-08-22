@@ -56,8 +56,10 @@ import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.lifecycleScope
 import io.github.yunhyok.usagering.app.AppGraph
 import io.github.yunhyok.usagering.data.MockUsageRepository
-import io.github.yunhyok.usagering.data.LoginPollingService
+import io.github.yunhyok.usagering.data.LoginFailureKind
+import io.github.yunhyok.usagering.data.LoginAction
 import io.github.yunhyok.usagering.data.LoginState
+import io.github.yunhyok.usagering.data.classifyLoginFailure
 import io.github.yunhyok.usagering.domain.UsageQuality
 import io.github.yunhyok.usagering.domain.UsageSnapshot
 import io.github.yunhyok.usagering.domain.UsageWindowData
@@ -68,7 +70,6 @@ import io.github.yunhyok.usagering.worker.UsageWorkScheduler
 import io.github.yunhyok.usagering.widget.UsageRingWidget
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -135,7 +136,19 @@ private fun UsageRingApp(onEnableUpdates: () -> Unit) {
                 Tab(tab == 0, { tab = 0 }, text = { Text(stringResource(R.string.dashboard)) })
                 Tab(tab == 1, { tab = 1 }, text = { Text(stringResource(R.string.settings)) })
             }
-            if (tab == 0) Dashboard(snapshot, selected, ::refreshImmediately) else Settings(onEnableUpdates, ::refreshImmediately)
+            if (tab == 0) Dashboard(snapshot, selected, ::refreshImmediately) else {
+                val loginOperations = AppGraph.loginOperations(context)
+                val loginAction by loginOperations.actionFlow.collectAsState()
+                Settings(
+                    onEnableUpdates,
+                    ::refreshImmediately,
+                    loginAction = loginAction,
+                    onBeginLogin = { loginOperations.start() },
+                    onCancelLogin = { loginOperations.cancel() },
+                    onLogout = { loginOperations.logout() },
+                    onRetryLogout = { loginOperations.retryLogout() },
+                )
+            }
         }
     }
 }
@@ -197,7 +210,15 @@ private fun UsageRing(remaining: Int?, label: String) {
 }
 
 @androidx.compose.runtime.Composable
-private fun Settings(onEnableUpdates: () -> Unit, onRefresh: () -> Unit) {
+private fun Settings(
+    onEnableUpdates: () -> Unit,
+    onRefresh: () -> Unit,
+    loginAction: LoginAction?,
+    onBeginLogin: () -> Unit,
+    onCancelLogin: () -> Unit,
+    onLogout: () -> Unit,
+    onRetryLogout: () -> Unit,
+) {
     val context = LocalContext.current
     val mockRepository = if (BuildConfig.FLAVOR == "mock") AppGraph.mockRepository(context) else null
     val scope = rememberCoroutineScope()
@@ -215,51 +236,60 @@ private fun Settings(onEnableUpdates: () -> Unit, onRefresh: () -> Unit) {
         val loginController = remember { AppGraph.loginController(context) }
         val loginState by loginController.stateFlow.collectAsState()
         when (val current = loginState) {
-            LoginState.SignedOut -> Button(enabled = BuildConfig.FLAVOR == "native", onClick = {
-                scope.launch {
-                    val started = withContext(Dispatchers.IO) { loginController.start() }
-                    if (started is LoginState.WaitingForApproval) {
-                        ContextCompat.startForegroundService(context, Intent(context, LoginPollingService::class.java).setAction(LoginPollingService.ACTION_START))
-                    }
-                }
-            }) { Text(stringResource(R.string.login)) }
+            LoginState.SignedOut -> Button(
+                enabled = BuildConfig.FLAVOR == "native" && loginAction == null,
+                onClick = onBeginLogin,
+            ) {
+                Text(stringResource(if (loginAction == LoginAction.START) R.string.login_starting else R.string.login))
+            }
             is LoginState.WaitingForApproval -> {
-                Text(stringResource(R.string.login_waiting))
+                Text(stringResource(if (loginAction == LoginAction.START) R.string.login_starting else R.string.login_waiting))
                 Text(stringResource(R.string.login_verification_url, current.verificationUri))
                 Text(stringResource(R.string.login_user_code, current.userCode))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
+                    Button(enabled = loginAction == null, onClick = {
                         runCatching {
                             context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(current.verificationUri)))
                         }
                     }) { Text(stringResource(R.string.open_browser)) }
-                    Button(onClick = {
-                        loginController.cancel()
-                        context.stopService(Intent(context, LoginPollingService::class.java))
-                    }) { Text(stringResource(R.string.cancel)) }
+                    Button(enabled = loginAction == null, onClick = onCancelLogin) {
+                        Text(stringResource(if (loginAction == LoginAction.CANCEL) R.string.cancel_in_progress else R.string.cancel))
+                    }
                 }
             }
             LoginState.Authenticated -> {
                 Text(stringResource(R.string.login_authenticated))
-                Button(enabled = BuildConfig.FLAVOR == "native", onClick = {
-                    loginController.logout()
-                    context.stopService(Intent(context, LoginPollingService::class.java))
-                }) { Text(stringResource(R.string.logout)) }
+                Button(
+                    enabled = BuildConfig.FLAVOR == "native" && loginAction == null,
+                    onClick = onLogout,
+                ) {
+                    Text(stringResource(if (loginAction == LoginAction.LOGOUT) R.string.logout_in_progress else R.string.logout))
+                }
             }
             is LoginState.Failed -> {
-                Text(stringResource(R.string.login_failed))
-                Button(onClick = {
-                    if (current.code == "LOGOUT_FAILED") {
-                        scope.launch(Dispatchers.IO) { loginController.logout() }
-                    } else {
-                        scope.launch {
-                            val started = withContext(Dispatchers.IO) { loginController.start() }
-                            if (started is LoginState.WaitingForApproval) {
-                                ContextCompat.startForegroundService(context, Intent(context, LoginPollingService::class.java).setAction(LoginPollingService.ACTION_START))
-                            }
-                        }
-                    }
-                }) { Text(stringResource(R.string.retry)) }
+                Text(stringResource(
+                    when {
+                        current.code == "POLLING_SERVICE_UNAVAILABLE" -> R.string.login_polling_unavailable
+                        classifyLoginFailure(current.code) == LoginFailureKind.TLS_CONNECTION -> R.string.login_tls_connection_failed
+                        else -> R.string.login_failed
+                    },
+                ))
+                val isLogoutRetry = current.code == "LOGOUT_FAILED"
+                val actionInFlight = loginAction != null
+                Button(
+                    enabled = !actionInFlight,
+                    onClick = if (isLogoutRetry) onRetryLogout else onBeginLogin,
+                ) {
+                    Text(stringResource(
+                        when (loginAction) {
+                            LoginAction.START -> R.string.login_starting
+                            LoginAction.CANCEL -> R.string.cancel_in_progress
+                            LoginAction.LOGOUT -> R.string.logout_in_progress
+                            LoginAction.LOGOUT_RETRY -> R.string.logout_in_progress
+                            null -> R.string.retry
+                        },
+                    ))
+                }
             }
         }
         Spacer(Modifier.height(12.dp))

@@ -37,9 +37,15 @@ class LoginPollingService : Service() {
         pollJob = scope.launch {
             val controller = io.github.yunhyok.usagering.app.AppGraph.loginController(applicationContext)
             while (isActive) {
-                when (controller.poll()) {
-                    is LoginState.WaitingForApproval -> delay(POLL_INTERVAL)
-                    else -> stopSelf()
+                if (shouldContinueLoginPolling(controller.poll())) {
+                    delay(POLL_INTERVAL)
+                } else {
+                    stopSelf()
+                    // A terminal native state must not fall through into a
+                    // second poll iteration. The service is stopped here,
+                    // and the loop exits immediately even if stopSelf is
+                    // deferred by the framework.
+                    break
                 }
             }
         }
@@ -77,3 +83,6 @@ class LoginPollingService : Service() {
         const val POLL_INTERVAL = 5_000L
     }
 }
+
+internal fun shouldContinueLoginPolling(state: LoginState): Boolean =
+    state is LoginState.WaitingForApproval

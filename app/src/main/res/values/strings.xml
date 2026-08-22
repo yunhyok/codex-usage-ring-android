@@ -39,5 +39,10 @@
     <string name="cancel">Cancel</string>
     <string name="login_authenticated">Authenticated. Usage remains on-device.</string>
     <string name="login_failed">Login failed or timed out.</string>
+    <string name="login_tls_connection_failed">Secure connection could not be established. Check your network and device time, then try again.</string>
+    <string name="login_starting">Starting login…</string>
+    <string name="login_polling_unavailable">Login polling could not start. Try again.</string>
+    <string name="cancel_in_progress">Cancelling…</string>
+    <string name="logout_in_progress">Logging out…</string>
     <string name="retry">Try again</string>
 </resources>

@@ -14,8 +14,18 @@ change = "Standalone manifest pins every Codex workspace dependency to the exact
 
 [files."codex-rs/app-server/src/in_process.rs"]
 upstream_sha256 = "42F2996E2BBE0EDB233FC23AB1DC4095946BBDCF0505B8ADE600F8132521EB13"
-patched_sha256 = "08BF63958FBF499C538825794BB78EC19ABA76568B2F445ED4CF28BD28527F54"
-change = "PluginStartupTasks::Start is forced to PluginStartupTasks::Skip for the Android account-only facade."
+patched_sha256 = "89250F5EF5DC3501D9BC5768AC6F43477BA36CB2C3E48EEFB23C80FF51C4FEDE"
+change = "Force PluginStartupTasks::Skip and use an Android-only atomic installation-ID resolver without the unsupported desktop advisory lock; non-Android keeps the upstream resolver."
+
+[files."codex-rs/app-server/src/error_code.rs"]
+upstream_sha256 = "5EFBEBCDB63C55E5BF71DB70AA31F9A1C60AE88AF7DD9E799B6B659D8B34DDBE"
+patched_sha256 = "74AB810D12A116928E5C6AF69E36E80D0090BE6107FBADC3F30B2EE07905636C"
+change = "Emit only an allowlisted usageRingCategory and a generic message for device-code start failures; raw transport/provider details remain inside the app-server."
+
+[files."codex-rs/app-server/src/request_processors/account_processor.rs"]
+upstream_sha256 = "737B82796346B0011F71FD096690635C17FA80A7E60A9CDD83BA1F6A4053B6FF"
+patched_sha256 = "0A90C7329E1AB1BF1E97A3556DEAB80FBBCACA4ECDA961EF3198E2832E3B3B94"
+change = "Classify device-code start failures into stable non-secret categories before constructing the JSON-RPC error; add deterministic category and port-number regression tests."
 
 [files."reqwest-0.12.28/Cargo.toml"]
 upstream_sha256 = "23C8A0827AAAC74059965A182C6873990E75AA550E8079D3B51BB95092871205"
@@ -53,6 +63,19 @@ upstream_sha256 = "78C03B179AA11462C3F0DC233B60800DBA313DA96610404D5498CF9B76BC2
 patched_sha256 = "9518B743ADDDBC5A0D54B7587F9D712CF575FE8FAD23959C78CA1475016DABF9"
 change = "Adapt server presets, runtime construction, fallible builds, and typed answer records to Hickory 0.26.1 without changing the Rama DNS public API."
 
-[patch]
+[patches.plugin_startup]
 file = "patches/app-server-in-process-plugin-skip.patch"
-sha256 = "74A7A8529EB05DC117A6E06224FDFE68F498DB4B8A01D9D5352E18AB0C5693F3"
+sha256 = "31C11D95092364BA25D5748390252211B2CEB6FA8444D8FF6BFE81C48BC8D572"
+
+[patches.android_installation_id]
+file = "patches/app-server-in-process-android-installation-id.patch"
+sha256 = "3922B9110AEE8A3E7326C3C0CE8DD3FF36881802D9DFA9290AC85E9DA789B8F6"
+
+[patches.device_login_error_category]
+file = "patches/app-server-device-login-error-category.patch"
+sha256 = "14B1B07F07912F0178BD37DBC6D49A8001F9E76CB333ABB524236B73CBFA5714"
+
+[trees."patches/app-server"]
+file_count = 231
+patched_sha256 = "3BD07B5DF17EF9AF4DDA7CAE82B1DE75F2C3F25E8E52FB4323B2AAB7172A9A86"
+algorithm = "SHA-256 over UTF-8 lines '<file-sha256-lower>  <relative-path-with-forward-slashes>', path-sorted, final newline"

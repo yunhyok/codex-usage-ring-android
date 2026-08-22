@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string] $BomPath = 'build/reports/cyclonedx/bom.json'
+    [string] $BomPath = 'build/reports/cyclonedx/bom.json',
+    [switch] $RequireRustlsVerifier,
+    [string] $VendorRoot = 'third_party/rustls-platform-verifier-android'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,6 +15,30 @@ $bom = Get-Content -LiteralPath $BomPath -Raw | ConvertFrom-Json
 $components = @($bom.components)
 if ($bom.specVersion -ne '1.6' -or $components.Count -eq 0) {
     throw 'Expected a non-empty CycloneDX 1.6 SBOM.'
+}
+
+if ($RequireRustlsVerifier) {
+    $verifier = @($components | Where-Object {
+        [string]$_.name -eq 'rustls-platform-verifier-android' -or
+        [string]$_.purl -like 'pkg:generic/rustls-platform-verifier-android@*'
+    })
+    if ($verifier.Count -ne 1) { throw 'Explicit rustls-platform-verifier-android component is required exactly once in the release SBOM.' }
+    $verifierPurl = [string]$verifier[0].purl
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $vendor = if ([IO.Path]::IsPathRooted($VendorRoot)) { $VendorRoot } else { Join-Path $repoRoot $VendorRoot }
+    $manifest = Get-Content -LiteralPath (Join-Path $vendor 'PROVENANCE.json') -Raw | ConvertFrom-Json
+    $expectedPurl = "pkg:generic/rustls-platform-verifier-android@$([string]$manifest.version)?upstream_commit=$([string]$manifest.upstream_commit)"
+    if ($verifierPurl -ne $expectedPurl) { throw 'rustls verifier SBOM component must include the exact pinned upstream commit.' }
+    $verifierHashes = @($verifier[0].hashes | Where-Object { [string]$_.alg -eq 'SHA-256' })
+    if ($verifierHashes.Count -ne 0) { throw 'rustls verifier SBOM must use named source properties rather than unlabeled component hashes.' }
+    foreach ($relative in @($manifest.source_files | ForEach-Object { [string]$_ })) {
+        $sourcePath = Join-Path $vendor $relative
+        $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $property = @($verifier[0].properties | Where-Object { $_.name -eq 'vendored_source_file' -and [string]$_.value -eq "$relative sha256=$sourceHash" })
+        if ($property.Count -ne 1) { throw "rustls verifier SBOM is missing source binding: $relative" }
+    }
+    $external = @($verifier[0].externalReferences | Where-Object { $_.type -eq 'vcs' -and [string]$_.url -eq [string]$manifest.upstream_source_url })
+    if ($external.Count -ne 1) { throw 'rustls verifier SBOM external reference must match the exact pinned upstream URL.' }
 }
 
 $allowed = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)

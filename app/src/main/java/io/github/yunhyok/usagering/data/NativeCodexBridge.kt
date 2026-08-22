@@ -62,7 +62,9 @@ internal object NativeJson {
 
     fun challenge(raw: String?): Result<DeviceCodeChallenge> = runCatching {
         val (root, result) = envelope(raw, "beginDeviceLogin") ?: error("INVALID_JSON")
-        if (!root.optBoolean("ok", false)) error(root.optJSONObject("error")?.optString("code") ?: "NATIVE_ERROR")
+        if (!root.optBoolean("ok", false)) {
+            error(sanitizeLoginErrorCode(root.optJSONObject("error")?.optString("code") ?: "NATIVE_ERROR"))
+        }
         val dto = result ?: error("INVALID_RESPONSE")
         val uri = dto.optString("verification_url")
         val code = dto.optString("user_code")
@@ -73,7 +75,11 @@ internal object NativeJson {
 
     fun poll(raw: String?): LoginPollResult {
         val pair = envelope(raw, "pollLogin") ?: return LoginPollResult.Failed("INVALID_JSON")
-        if (!pair.first.optBoolean("ok", false)) return LoginPollResult.Failed(pair.first.optJSONObject("error")?.optString("code") ?: "NATIVE_ERROR")
+        if (!pair.first.optBoolean("ok", false)) {
+            return LoginPollResult.Failed(
+                sanitizeLoginErrorCode(pair.first.optJSONObject("error")?.optString("code") ?: "NATIVE_ERROR"),
+            )
+        }
         return when (pair.second?.optString("status")?.lowercase()) {
             "authenticated" -> LoginPollResult.Authenticated
             "waiting" -> LoginPollResult.Waiting

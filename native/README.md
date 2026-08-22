@@ -14,6 +14,17 @@ JSON body contains only an absolute `filesDir` and `schemaVersion:1`. No raw
 JSON-RPC method, token, shell command, tool, MCP server, or plugin can cross
 the boundary.
 
+The Android verifier is source-visible under
+`../third_party/rustls-platform-verifier-android/`, derived exactly from
+rustls-platform-verifier v0.7.0 commit
+`996b1c903491641b17b3c9afb65d1352f6fc6b76`. The native flavor compiles that
+source directly; the mock flavor is independent. Android's system
+TrustManager remains authoritative. The only local change is to retain
+`SOFT_FAIL` and `ONLY_END_ENTITY` while adding `PREFER_CRLS` when no stapled
+OCSP response is present. User/raw trust anchors are not used; OCSP/CRL
+fallback remains enabled and `NO_FALLBACK` is omitted. See the
+vendored README and retained Apache-2.0/MIT license texts for provenance.
+
 ## Upstream investigation
 
 The public [`openai/codex` tag `rust-v0.148.0`](https://github.com/openai/codex/tree/rust-v0.148.0)
@@ -21,12 +32,16 @@ was resolved to commit
 `3ba0f711642a888aec92a611a3f3b2211157ff89` (annotated tag object
 `ab52d1794d47d47ecaeb0ec37fc00fa31593ecf3`). The app-server package is a
 standalone Apache-2.0 adaptation under
-`../third_party/openai-codex/patches/app-server`; provenance, licenses, and
-modified-file hashes are recorded in
+`../third_party/openai-codex/patches/app-server`; provenance, licenses, the
+current Cargo manifest digest, and a canonical digest over the complete
+vendored build-input tree are recorded in
 `../third_party/openai-codex/upstream.toml` and
 `../third_party/openai-codex/PATCHES.md`.
 
-The same provenance record covers two dependency-only security adaptations
+The native gate binds the complete app-server source-tree digest (including its
+Cargo manifest) into the exported runtime marker, so a partial or stale
+vendored package cannot satisfy the runtime check. The same provenance record
+covers two dependency-only security adaptations
 without changing the Codex tag: a standalone `codex-git-utils` manifest selects
 `gix` 0.83.0, and a patched `rama-dns` 0.3.0-alpha.4 selects Hickory 0.26.1.
 Their source/API changes, license texts, and hashes are committed beside the
@@ -55,9 +70,26 @@ logout. It forces the file auth store, `EnvironmentManager::without_environments
 analytics/feedback/OTEL disabled, no state/log databases, and the patched
 `PluginStartupTasks::Skip`. Rate limits are reduced to named five-hour and
 seven-day fields (percent, minutes, reset epoch milliseconds); login exposes
-only HTTPS verification URL and user code. Auth-refresh requests unsupported by
-the pinned facade remain a sanitized runtime error. No authenticated probe was
-run here.
+only HTTPS verification URL and user code. Caller-forced auth refresh is not
+exposed through JNI. `readRateLimits` still uses the pinned `AuthManager::auth`
+path, whose proactive refresh remains internal. A controlled token-expiry
+refresh has not been proven on the physical device.
+
+The same pinned app-server source has an Android-only installation-ID patch.
+The desktop resolver creates and advisory-locks `installation_id`, a behavior
+that is not portable to every Android app-private filesystem. Android now
+reuses a valid UUID or atomically replaces the file with a UUIDv7, while
+non-Android builds retain the upstream resolver. The patch files and the
+resulting `in_process.rs` hash are all bound into the exported runtime marker;
+the Android path remains subject to the physical-device acceptance gate.
+
+Device-code start failures are also reduced inside the pinned app-server to a
+single allowlisted `usageRingCategory` value and a generic JSON-RPC message.
+The Android/JNI layer receives only stable categories such as TLS, DNS,
+timeout, HTTP class, rate limiting, transport, or unsupported; raw provider
+errors, URLs, response bodies, identifiers, and tokens are never returned by
+this diagnostic boundary. The patch file and both resulting source-file hashes
+are bound into the exported runtime marker and checked by `gate.ps1`.
 
 ## Reproducible gate
 
@@ -69,7 +101,8 @@ pwsh -File native/gate.ps1 -ReportPath native/gate-report.json
 
 The command writes machine-readable JSON and exits `2` for `NO-GO`. It checks
 Rust 1.95.0, the `aarch64-linux-android` target, NDK clang, Cargo unit tests,
-the actual locked ARM64 release build, vendored app-server Skip/hash evidence,
+the actual locked ARM64 release build, vendored app-server Skip/Android
+installation-ID/hash evidence,
 reviewed gix/Hickory versions and patch hashes, linked JNI symbols/marker, and
 absence of `openssl-sys` on the Android graph.
 When these source and binary checks pass, the report may be static `GO`, but it

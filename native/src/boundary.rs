@@ -60,6 +60,17 @@ pub enum ErrorCode {
     RuntimeUnavailable,
     LoginInProgress,
     LoginFailed,
+    LoginStartTransport,
+    LoginStartTls,
+    LoginStartTlsRevoked,
+    LoginStartDns,
+    LoginStartNotSupported,
+    LoginStartServer,
+    LoginStartHttp4xx,
+    LoginStartHttp5xx,
+    LoginStartRateLimited,
+    LoginStartDeserialize,
+    LoginStartTimeout,
     LoginTimeout,
     RateLimitsUnavailable,
     LogoutFailed,
@@ -78,6 +89,17 @@ impl ErrorCode {
             Self::RuntimeUnavailable => "RUNTIME_UNAVAILABLE",
             Self::LoginInProgress => "LOGIN_IN_PROGRESS",
             Self::LoginFailed => "LOGIN_FAILED",
+            Self::LoginStartTransport => "LOGIN_START_TRANSPORT",
+            Self::LoginStartTls => "LOGIN_START_TLS",
+            Self::LoginStartTlsRevoked => "LOGIN_START_TLS_REVOKED",
+            Self::LoginStartDns => "LOGIN_START_DNS",
+            Self::LoginStartNotSupported => "LOGIN_START_NOT_SUPPORTED",
+            Self::LoginStartServer => "LOGIN_START_SERVER",
+            Self::LoginStartHttp4xx => "LOGIN_START_HTTP_4XX",
+            Self::LoginStartHttp5xx => "LOGIN_START_HTTP_5XX",
+            Self::LoginStartRateLimited => "LOGIN_START_RATE_LIMITED",
+            Self::LoginStartDeserialize => "LOGIN_START_DESERIALIZE",
+            Self::LoginStartTimeout => "LOGIN_START_TIMEOUT",
             Self::LoginTimeout => "LOGIN_TIMEOUT",
             Self::RateLimitsUnavailable => "RATE_LIMITS_UNAVAILABLE",
             Self::LogoutFailed => "LOGOUT_FAILED",
@@ -138,8 +160,8 @@ impl StartResult {
                 plugins: false,
                 mcp: false,
                 shell: false,
-                // The pinned in-process facade rejects this server request;
-                // no refresh token crosses the JNI boundary.
+                // Explicit forced auth refresh is not exposed through this
+                // boundary; AuthManager proactive refresh remains internal.
                 auth_refresh_supported: false,
             },
         }
@@ -201,7 +223,12 @@ impl RateLimitsResult {
         if !(0..=100).contains(&window.used_percent) {
             return;
         }
-        let kind = classify_window(window.window_duration_mins, fallback);
+        let Some(kind) = classify_window(window.window_duration_mins, fallback) else {
+            // An explicit duration is authoritative.  Unknown, negative, or
+            // otherwise extreme values must not be guessed into a named
+            // window (the ordinal fallback is only for an absent duration).
+            return;
+        };
         let reset = window
             .resets_at
             .and_then(|seconds| seconds.checked_mul(1000));
@@ -237,14 +264,12 @@ enum WindowKind {
     SevenDay,
 }
 
-fn classify_window(duration: Option<i64>, fallback: WindowKind) -> WindowKind {
-    let Some(duration) = duration else {
-        return fallback;
-    };
-    if (duration - 300).abs() <= (duration - 10_080).abs() {
-        WindowKind::FiveHour
-    } else {
-        WindowKind::SevenDay
+fn classify_window(duration: Option<i64>, fallback: WindowKind) -> Option<WindowKind> {
+    match duration {
+        None => Some(fallback),
+        Some(300) => Some(WindowKind::FiveHour),
+        Some(10_080) => Some(WindowKind::SevenDay),
+        Some(_) => None,
     }
 }
 
@@ -364,6 +389,17 @@ fn error_json(method: &str, code: ErrorCode) -> String {
         ErrorCode::RuntimeUnavailable => "Codex in-process runtime is unavailable",
         ErrorCode::LoginInProgress => "device login is already in progress",
         ErrorCode::LoginFailed => "device login failed",
+        ErrorCode::LoginStartTransport => "device login transport failed",
+        ErrorCode::LoginStartTls => "device login TLS verification failed",
+        ErrorCode::LoginStartTlsRevoked => "device login TLS revocation verification failed",
+        ErrorCode::LoginStartDns => "device login DNS resolution failed",
+        ErrorCode::LoginStartNotSupported => "device login is not supported",
+        ErrorCode::LoginStartServer => "device login server rejected the request",
+        ErrorCode::LoginStartHttp4xx => "device login server returned a client error",
+        ErrorCode::LoginStartHttp5xx => "device login server returned a server error",
+        ErrorCode::LoginStartRateLimited => "device login request was rate limited",
+        ErrorCode::LoginStartDeserialize => "device login response was invalid",
+        ErrorCode::LoginStartTimeout => "device login start timed out",
         ErrorCode::LoginTimeout => "device login timed out",
         ErrorCode::RateLimitsUnavailable => "rate limits are unavailable",
         ErrorCode::LogoutFailed => "logout failed",
@@ -471,6 +507,13 @@ mod tests {
     }
 
     #[test]
+    fn tls_revoked_message_is_neutral_about_certificate_state() {
+        let response = error_json("beginDeviceLogin", ErrorCode::LoginStartTlsRevoked);
+        assert!(response.contains("TLS revocation verification failed"));
+        assert!(!response.contains("revoked"));
+    }
+
+    #[test]
     fn start_requires_files_dir_and_schema() {
         assert_eq!(
             serde_json::from_str::<Value>(&dispatch_json("start", "null")).unwrap()["error"]["code"],
@@ -569,5 +612,25 @@ mod tests {
         ));
         assert_eq!(result.five_hour_used_percent, Some(10));
         assert_eq!(result.seven_day_used_percent, Some(20));
+    }
+
+    #[test]
+    fn unknown_explicit_duration_is_omitted_without_ordinal_guessing() {
+        let result = RateLimitsResult::from_snapshot(&snapshot(
+            Some(window(10, Some(301), None)),
+            Some(window(20, Some(-1), None)),
+        ));
+        assert_eq!(result.five_hour_used_percent, None);
+        assert_eq!(result.seven_day_used_percent, None);
+    }
+
+    #[test]
+    fn extreme_explicit_duration_is_omitted_without_overflow_or_guessing() {
+        let result = RateLimitsResult::from_snapshot(&snapshot(
+            Some(window(10, Some(i64::MAX), None)),
+            Some(window(20, Some(i64::MIN), None)),
+        ));
+        assert_eq!(result.five_hour_used_percent, None);
+        assert_eq!(result.seven_day_used_percent, None);
     }
 }

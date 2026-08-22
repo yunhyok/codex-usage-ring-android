@@ -2,6 +2,7 @@ use super::bedrock_auth::clear_user_model_provider_if_bedrock;
 use super::bedrock_auth::set_user_model_provider_to_bedrock;
 use super::*;
 use crate::auth_mode::auth_mode_to_api;
+use crate::error_code::{DeviceCodeStartErrorCategory, device_code_start_error};
 use crate::external_auth::ExternalAuthBridge;
 use chrono::DateTime;
 use codex_app_server_protocol::DesktopOnboardingEntrypoint;
@@ -521,12 +522,7 @@ impl AccountRequestProcessor {
     }
 
     fn login_chatgpt_device_code_start_error(err: IoError) -> JSONRPCErrorError {
-        let is_not_found = err.kind() == std::io::ErrorKind::NotFound;
-        if is_not_found {
-            invalid_request(err.to_string())
-        } else {
-            internal_error(format!("failed to request device code: {err}"))
-        }
+        device_code_start_error(classify_device_code_start_error(&err))
     }
 
     async fn login_chatgpt_v2(
@@ -1365,6 +1361,135 @@ impl AccountRequestProcessor {
     }
 }
 
+fn classify_device_code_start_error(err: &IoError) -> DeviceCodeStartErrorCategory {
+    let mut details = err.to_string();
+    let mut source = std::error::Error::source(err);
+    while let Some(current) = source {
+        details.push(' ');
+        details.push_str(&current.to_string());
+        source = current.source();
+    }
+    let lower = details.to_ascii_lowercase();
+
+    // Keep the platform-verifier false-Revoked path distinct from generic TLS
+    // failures without exposing the provider/transport detail.
+    if lower.contains("revoked")
+        || lower.contains("revocation")
+        || lower.contains("certpathvalidatorexception")
+    {
+        return DeviceCodeStartErrorCategory::TlsRevoked;
+    }
+    if err.kind() == std::io::ErrorKind::NotFound
+        || lower.contains("not supported")
+        || lower.contains("not enabled")
+        || lower.contains("unsupported")
+    {
+        return DeviceCodeStartErrorCategory::NotSupported;
+    }
+    if err.kind() == std::io::ErrorKind::TimedOut
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+    {
+        return DeviceCodeStartErrorCategory::Timeout;
+    }
+    if lower.contains("tls")
+        || lower.contains("ssl")
+        || lower.contains("certificate")
+        || lower.contains("rustls")
+        || lower.contains("handshake")
+    {
+        return DeviceCodeStartErrorCategory::Tls;
+    }
+    if lower.contains("dns")
+        || lower.contains("getaddrinfo")
+        || lower.contains("no such host")
+        || lower.contains("name or service not known")
+        || lower.contains("resolve")
+    {
+        return DeviceCodeStartErrorCategory::Dns;
+    }
+    if lower.contains("rate limit")
+        || lower.contains("rate-limit")
+        || lower.contains("too many requests")
+        || lower.contains("status 429")
+        || lower.contains("status: 429")
+        || contains_http_status(&lower, 429, 429)
+    {
+        return DeviceCodeStartErrorCategory::RateLimited;
+    }
+    if contains_http_status(&lower, 400, 499) {
+        return DeviceCodeStartErrorCategory::Http4xx;
+    }
+    if contains_http_status(&lower, 500, 599) {
+        return DeviceCodeStartErrorCategory::Http5xx;
+    }
+    match err.kind() {
+        std::io::ErrorKind::ConnectionRefused
+        | std::io::ErrorKind::ConnectionReset
+        | std::io::ErrorKind::ConnectionAborted
+        | std::io::ErrorKind::NotConnected
+        | std::io::ErrorKind::BrokenPipe
+        | std::io::ErrorKind::UnexpectedEof
+        | std::io::ErrorKind::AddrNotAvailable
+        | std::io::ErrorKind::AddrInUse => DeviceCodeStartErrorCategory::Transport,
+        _ if lower.contains("connect")
+            || lower.contains("network")
+            || lower.contains("broken pipe")
+            || lower.contains("connection") =>
+        {
+            DeviceCodeStartErrorCategory::Transport
+        }
+        _ => DeviceCodeStartErrorCategory::Unknown,
+    }
+}
+
+fn contains_http_status(detail: &str, lower: u16, upper: u16) -> bool {
+    let tokens: Vec<&str> = detail
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .collect();
+    for (index, token) in tokens.iter().enumerate() {
+        let Some(next) = tokens.get(index + 1) else {
+            continue;
+        };
+        if matches!(*token, "status" | "code")
+            && next
+                .parse::<u16>()
+                .is_ok_and(|status| (lower..=upper).contains(&status))
+        {
+            return true;
+        }
+        if *token == "status"
+            && *next == "code"
+            && tokens
+                .get(index + 2)
+                .and_then(|value| value.parse::<u16>().ok())
+                .is_some_and(|status| (lower..=upper).contains(&status))
+        {
+            return true;
+        }
+        if *token == "http"
+            && next
+                .parse::<u16>()
+                .is_ok_and(|status| (lower..=upper).contains(&status))
+        {
+            return true;
+        }
+        if *token == "http"
+            && next
+                .parse::<u16>()
+                .is_ok_and(|version| version <= 9)
+            && tokens
+                .get(index + 2)
+                .and_then(|value| value.parse::<u16>().ok())
+                .is_some_and(|status| (lower..=upper).contains(&status))
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn workspace_message_from_backend(
     message: BackendWorkspaceMessage,
 ) -> Result<WorkspaceMessage, JSONRPCErrorError> {
@@ -1413,6 +1538,92 @@ mod tests {
     use codex_backend_client::TokenUsageProfileDailyBucket;
     use codex_backend_client::TokenUsageProfileStats;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn device_code_start_categories_are_allowlisted_and_secret_free() {
+        let cases = [
+            (
+                std::io::Error::new(std::io::ErrorKind::NotFound, "secret.example"),
+                DeviceCodeStartErrorCategory::NotSupported,
+            ),
+            (
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "https://secret"),
+                DeviceCodeStartErrorCategory::Timeout,
+            ),
+            (
+                std::io::Error::other(
+                    "rustls-platform-verifier: CertPathValidatorException: certificate revoked",
+                ),
+                DeviceCodeStartErrorCategory::TlsRevoked,
+            ),
+            (
+                std::io::Error::other("TLS revocation check failed for secret.example"),
+                DeviceCodeStartErrorCategory::TlsRevoked,
+            ),
+            (
+                std::io::Error::other("TLS certificate revoked; request timeout"),
+                DeviceCodeStartErrorCategory::TlsRevoked,
+            ),
+            (
+                std::io::Error::other("TLS certificate for secret.example"),
+                DeviceCodeStartErrorCategory::Tls,
+            ),
+            (
+                std::io::Error::other("DNS lookup failed for secret.example"),
+                DeviceCodeStartErrorCategory::Dns,
+            ),
+            (
+                std::io::Error::other("device code request failed with status 429"),
+                DeviceCodeStartErrorCategory::RateLimited,
+            ),
+            (
+                std::io::Error::other("device code request failed with HTTP 429"),
+                DeviceCodeStartErrorCategory::RateLimited,
+            ),
+            (
+                std::io::Error::other("device code request failed with status code: 429"),
+                DeviceCodeStartErrorCategory::RateLimited,
+            ),
+            (
+                std::io::Error::other("device code request failed with status 404"),
+                DeviceCodeStartErrorCategory::Http4xx,
+            ),
+            (
+                std::io::Error::other("device code request failed with status 503"),
+                DeviceCodeStartErrorCategory::Http5xx,
+            ),
+            (
+                std::io::Error::other("device code request failed with HTTP/2 503"),
+                DeviceCodeStartErrorCategory::Http5xx,
+            ),
+            (
+                std::io::Error::other("https://host:443"),
+                DeviceCodeStartErrorCategory::Unknown,
+            ),
+            (
+                std::io::Error::other("http://secret.example:503"),
+                DeviceCodeStartErrorCategory::Unknown,
+            ),
+            (
+                std::io::Error::new(std::io::ErrorKind::ConnectionReset, "connection reset"),
+                DeviceCodeStartErrorCategory::Transport,
+            ),
+            (
+                std::io::Error::other("malformed response"),
+                DeviceCodeStartErrorCategory::Unknown,
+            ),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(classify_device_code_start_error(&error), expected);
+            let response = device_code_start_error(expected);
+            assert_eq!(response.message, "device login start failed");
+            let data = response.data.expect("category data");
+            assert_eq!(data["usageRingCategory"], expected.as_str());
+            let serialized = serde_json::to_string(&response).expect("serialized error");
+            assert!(!serialized.contains("secret"));
+            assert!(!serialized.contains("CertPathValidatorException"));
+        }
+    }
 
     #[test]
     fn account_token_usage_response_maps_profile_stats_and_daily_buckets() {

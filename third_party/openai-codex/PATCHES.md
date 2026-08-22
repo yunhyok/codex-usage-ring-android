@@ -20,8 +20,11 @@ Codex repository commit and has a separate Apache-2.0 notice in
   certificate-root implementation while retaining certificate verification;
   the JNI start method must call
   `rustls_platform_verifier::android::init_with_env` with the application
-  Context before creating the client. No cleartext or verification bypass is
-  introduced.
+  Context before creating the client. This Rust patch introduces no transport
+  verification bypass. The Android application separately permits cleartext
+  only to the exact public CRL distribution host `c.pki.goog`; its scope and
+  fail-closed review rule are documented in
+  [`docs/THREAT_MODEL.md`](../../docs/THREAT_MODEL.md).
 * Upstream `src/async_impl/client.rs` SHA-256:
   `8C30B009838BE2126B90344EF97FB6141AC8BDF695F4E7BB00A3052A707D9B5C`.
 * Patched `src/async_impl/client.rs` SHA-256:
@@ -93,6 +96,12 @@ in the in-process facade.
   `3ba0f711642a888aec92a611a3f3b2211157ff89` (`rust-v0.148.0`), Apache-2.0.
 * Vendored package: `patches/app-server`; `LICENSE` and `LICENSE-APACHE` are
   retained in that directory.
+* The complete patched build-input tree contains 231 files and has canonical
+  SHA-256 digest
+  `3BD07B5DF17EF9AF4DDA7CAE82B1DE75F2C3F25E8E52FB4323B2AAB7172A9A86`.
+  The current vendored `Cargo.toml` digest is
+  `DDA0D9D99CB84FBCD10D63A72757FC1677B44A8F7736F3D190DC3BF0C486650D`.
+  The native gate binds both values into the runtime marker.
 * `Cargo.toml`: upstream SHA-256
   `B485F6BD328CABE20630418AD6F51149813A5652AF2440BFD3C9B07E27E4C0C5`;
   patched SHA-256
@@ -102,13 +111,37 @@ in the in-process facade.
 * `src/in_process.rs`: upstream SHA-256
   `42F2996E2BBE0EDB233FC23AB1DC4095946BBDCF0505B8ADE600F8132521EB13`;
   patched SHA-256
-  `08BF63958FBF499C538825794BB78EC19ABA76568B2F445ED4CF28BD28527F54`.
-  The single source change forces `PluginStartupTasks::Skip`, so hostile
-  plugin configuration cannot start plugin hosts in this facade.
-* Patch file SHA-256:
+  `89250F5EF5DC3501D9BC5768AC6F43477BA36CB2C3E48EEFB23C80FF51C4FEDE`.
+  One change forces `PluginStartupTasks::Skip`, so hostile plugin
+  configuration cannot start plugin hosts in this facade. The Android-only
+  installation-ID resolver avoids relying on the desktop advisory-lock
+  behavior that is not portable to every Android app-private filesystem. It
+  reuses a valid UUID and otherwise writes a UUIDv7 through a same-directory
+  temporary file and atomic rename; non-Android builds continue to call the
+  upstream resolver. Android behavior remains part of the physical-device
+  acceptance gate.
+* Plugin startup patch SHA-256:
   `patches/app-server-in-process-plugin-skip.patch` =
-  `74A7A8529EB05DC117A6E06224FDFE68F498DB4B8A01D9D5352E18AB0C5693F3`.
+  `31C11D95092364BA25D5748390252211B2CEB6FA8444D8FF6BFE81C48BC8D572`.
+* Android installation-ID patch SHA-256:
+  `patches/app-server-in-process-android-installation-id.patch` =
+  `3922B9110AEE8A3E7326C3C0CE8DD3FF36881802D9DFA9290AC85E9DA789B8F6`.
+* Device-login error-category patch SHA-256:
+  `patches/app-server-device-login-error-category.patch` =
+  `14B1B07F07912F0178BD37DBC6D49A8001F9E76CB333ABB524236B73CBFA5714`.
+  It changes `src/error_code.rs` from upstream SHA-256
+  `5EFBEBCDB63C55E5BF71DB70AA31F9A1C60AE88AF7DD9E799B6B659D8B34DDBE`
+  to `74AB810D12A116928E5C6AF69E36E80D0090BE6107FBADC3F30B2EE07905636C`,
+  and `src/request_processors/account_processor.rs` from upstream SHA-256
+  `737B82796346B0011F71FD096690635C17FA80A7E60A9CDD83BA1F6A4053B6FF`
+  to `0A90C7329E1AB1BF1E97A3556DEAB80FBBCACA4ECDA961EF3198E2832E3B3B94`.
+  The patch converts provider/transport failure details to one allowlisted
+  `usageRingCategory` value with a generic JSON-RPC message. Raw URLs,
+  identifiers, tokens, and response bodies remain inside the app-server.
+  All three patches pass `git apply --check` against commit
+  `3ba0f711642a888aec92a611a3f3b2211157ff89`.
 
 The machine-readable provenance and hashes are in `upstream.toml`. The native
-runtime marker includes the patch-file hash and the gate must compare it before
-accepting a library as the pinned runtime.
+runtime marker includes all patch-file hashes and resulting modified-source
+hashes; the gate must compare them before accepting a library as the pinned
+runtime.

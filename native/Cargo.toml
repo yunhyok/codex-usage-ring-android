@@ -25,6 +25,7 @@ codex-app-server-protocol = { git = "https://github.com/openai/codex.git", rev =
 codex-arg0 = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-arg0" }
 codex-config = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-config" }
 codex-feedback = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-feedback" }
+codex-features = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-features" }
 codex-protocol = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-protocol" }
 toml = "0.9"
 tokio = { version = "1", features = ["rt", "time"] }
