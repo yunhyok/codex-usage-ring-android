@@ -1,0 +1,19 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated metadata, build outputs, and repository-ignored upstream tests"
+paths = [
+  '''^native/Cargo\.lock$''',
+  '''^native/target/''',
+  '''^app/build/''',
+  '''^build/''',
+  '''^\.gradle/''',
+  '''^third_party/openai-codex/patches/app-server/tests/''',
+]
+
+[[allowlists]]
+description = "Reviewed public OpenAI Codex documentation and test fixtures"
+paths = [
+  '''^third_party/openai-codex/patches/app-server/README\.md$''',
+]

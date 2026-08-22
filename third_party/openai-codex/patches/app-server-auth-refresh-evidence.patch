@@ -1,0 +1,34 @@
+From 3ba0f711642a888aec92a611a3f3b2211157ff89 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] usage-ring: expose request-scoped auth refresh evidence
+
+Use the existing non-secret auth revision and AccountUpdated notification to
+prove that the rate-limit handler's natural AuthManager acquisition refreshed
+managed ChatGPT auth. No token, account identity, URL, or forced-refresh RPC is
+introduced.
+
+--- a/codex-rs/app-server/src/request_processors/account_processor.rs
++++ b/codex-rs/app-server/src/request_processors/account_processor.rs
+@@ -1062,4 +1062,11 @@ impl AccountRequestProcessor {
+     async fn get_account_rate_limits_response(
+         &self,
+     ) -> Result<GetAccountRateLimitsResponse, JSONRPCErrorError> {
++        // `AuthManager::auth()` is the only managed-ChatGPT auth acquisition
++        // path used here.  Sample its non-secret revision immediately before
++        // acquisition and emit the existing account notification only when
++        // that acquisition changed the cached auth.  This deliberately does
++        // not expose token material or add a caller-forced refresh method.
++        let auth_changes = self.auth_manager.auth_change_receiver();
++        let auth_revision_before = *auth_changes.borrow();
+         let Some(auth) = self.auth_manager.auth().await else {
+@@ -1076,3 +1083,11 @@ impl AccountRequestProcessor {
+         };
++
++        if *auth_changes.borrow() != auth_revision_before {
++            self.outgoing
++                .send_server_notification(ServerNotification::AccountUpdated(
++                    self.current_account_updated_notification(),
++                ))
++                .await;
++        }
+ 
+         if !auth.uses_codex_backend() {

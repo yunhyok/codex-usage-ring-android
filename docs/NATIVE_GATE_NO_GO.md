@@ -1,4 +1,8 @@
-# Native gate result: NO-GO
+# Historical native gate result: NO-GO
+
+> This is the archived portability result from the initial scaffold attempt.
+> It is retained for auditability and is not a current release verdict; the
+> current native integration must produce a fresh reviewed gate record.
 
 Date: 2026-08-21 (Asia/Seoul)
 

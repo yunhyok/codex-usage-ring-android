@@ -1,5 +1,6 @@
 # Android / Gradle
 .gradle/
+.kotlin/
 build/
 */build/
 local.properties
@@ -10,6 +11,9 @@ local.properties
 target/
 *.rs.bk
 native/gate-report*.json
+native/check.log
+native/upstream/
+third_party/openai-codex/patches/app-server/tests/
 
 # Local secrets and release material (never commit signing keys)
 *.jks

@@ -1,0 +1,22 @@
+{
+  "component": "rustls-platform-verifier-android",
+  "version": "0.7.0",
+  "upstream_commit": "996b1c903491641b17b3c9afb65d1352f6fc6b76",
+  "upstream_source_url": "https://raw.githubusercontent.com/rustls/rustls-platform-verifier/996b1c903491641b17b3c9afb65d1352f6fc6b76/android/rustls-platform-verifier/src/main/java/org/rustls/platformverifier/CertificateVerifier.kt",
+  "license_files": [
+    "LICENSE-APACHE",
+    "LICENSE-MIT"
+  ],
+  "source_files": [
+    "src/main/java/org/rustls/platformverifier/CertificateVerifier.kt",
+    "src/main/java/org/rustls/platformverifier/BuildConfig.java"
+  ],
+  "sha256": {
+    "src/main/java/org/rustls/platformverifier/CertificateVerifier.kt": "ff38c72887aaabe9c54b582777109a70c29b258c47c347af37a65fe0970635e7",
+    "src/main/java/org/rustls/platformverifier/BuildConfig.java": "92f6fbc924c2675f33e67cf9089b9e75f21610439e785e06b6eae735361d7b8f",
+    "LICENSE-APACHE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "LICENSE-MIT": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c"
+  },
+  "review_status": "pending",
+  "review_note": "Update review_status and the modified source digest only after an independent source review."
+}

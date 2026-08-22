@@ -26,6 +26,7 @@ object UsageWorkScheduler {
     private val Context.schedulerDataStore by preferencesDataStore("usage_ring_scheduler")
     private val intervalKey = intPreferencesKey("interval_minutes")
     private val notificationsKey = booleanPreferencesKey("notifications_enabled")
+    private val bootRestoreKey = booleanPreferencesKey("boot_restore_enabled")
 
     private fun constraints() = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -40,6 +41,13 @@ object UsageWorkScheduler {
     suspend fun notificationsEnabled(context: Context): Boolean =
         context.schedulerDataStore.data.first()[notificationsKey] ?: false
 
+    suspend fun bootRestoreEnabled(context: Context): Boolean =
+        context.schedulerDataStore.data.first()[bootRestoreKey] ?: false
+
+    suspend fun setBootRestoreEnabled(context: Context, enabled: Boolean) {
+        context.schedulerDataStore.edit { it[bootRestoreKey] = enabled }
+    }
+
     suspend fun setNotificationsEnabled(context: Context, enabled: Boolean) {
         context.schedulerDataStore.edit { it[notificationsKey] = enabled }
         if (!enabled) {
@@ -48,7 +56,10 @@ object UsageWorkScheduler {
     }
 
     suspend fun setInterval(context: Context, interval: RefreshInterval) {
-        context.schedulerDataStore.edit { it[intervalKey] = interval.minutes }
+        context.schedulerDataStore.edit {
+            it[intervalKey] = interval.minutes
+            it[bootRestoreKey] = true
+        }
         schedule(context, interval)
     }
 

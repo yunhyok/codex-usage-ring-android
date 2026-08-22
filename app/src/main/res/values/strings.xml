@@ -8,7 +8,7 @@
     <string name="stale">Stale data</string>
     <string name="error">Refresh error</string>
     <string name="login">Device-code login</string>
-    <string name="login_device_code_description">Live login remains disabled while the native Android portability gate is blocked. This build does not collect credentials.</string>
+    <string name="login_device_code_description">Sign in with the official ChatGPT device-code flow. Usage Ring shows only the approval URL and one-time code; credentials and OAuth tokens never cross into the Android UI.</string>
     <string name="permission_description">Allow notifications to receive a quiet status update every 30 minutes.</string>
     <string name="enable_updates">Enable updates</string>
     <string name="notification_channel_name">Usage status</string>
@@ -23,7 +23,7 @@
     <string name="widget_unknown">Unknown</string>
     <string name="mock_scenarios">Mock scenarios</string>
     <string name="window_summary">%1$s: %2$s · reset %3$s</string>
-    <string name="fetched_at">Fetched %1$s</string>
+    <string name="fetched_at">Fetched %1$s (%2$d min ago)</string>
     <string name="refresh_now">Refresh now</string>
     <string name="add_widget">Add home-screen widget</string>
     <string name="refresh_interval">Refresh interval: %1$d min</string>
@@ -32,4 +32,17 @@
     <string name="privacy_summary">Privacy: usage values stay on-device; no telemetry, ads, or remote relay.</string>
     <string name="license_summary">License: Apache-2.0. Unofficial and not affiliated with or endorsed by OpenAI.</string>
     <string name="logout">Log out</string>
+    <string name="login_waiting">Waiting for approval…</string>
+    <string name="login_verification_url">Verification URL: %1$s</string>
+    <string name="login_user_code">User code: %1$s</string>
+    <string name="open_browser">Open browser</string>
+    <string name="cancel">Cancel</string>
+    <string name="login_authenticated">Authenticated. Usage remains on-device.</string>
+    <string name="login_failed">Login failed or timed out.</string>
+    <string name="login_tls_connection_failed">Secure connection could not be established. Check your network and device time, then try again.</string>
+    <string name="login_starting">Starting login…</string>
+    <string name="login_polling_unavailable">Login polling could not start. Try again.</string>
+    <string name="cancel_in_progress">Cancelling…</string>
+    <string name="logout_in_progress">Logging out…</string>
+    <string name="retry">Try again</string>
 </resources>

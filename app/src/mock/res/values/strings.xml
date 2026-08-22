@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="login_device_code_description">Live login is intentionally disabled in mockDebug. This build uses local scenarios only and does not collect credentials.</string>
+</resources>

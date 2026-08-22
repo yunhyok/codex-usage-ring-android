@@ -1,0 +1,37 @@
+# Vendored from OpenAI Codex rust-v0.148.0 at commit
+# 3ba0f711642a888aec92a611a3f3b2211157ff89 (Apache-2.0). This standalone
+# manifest keeps the package source unchanged and changes only workspace
+# dependency resolution: gix 0.81 is replaced with fixed gix 0.83.
+[package]
+name = "codex-git-utils"
+version = "0.148.0"
+edition = "2024"
+license = "Apache-2.0"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = "0.4.45"
+codex-file-system = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-file-system" }
+codex-protocol = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-protocol" }
+codex-utils-absolute-path = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-absolute-path" }
+codex-utils-path-uri = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-path-uri" }
+codex-utils-pty = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-pty" }
+futures = { version = "0.3.34", default-features = false, features = ["alloc"] }
+gix = { version = "0.83.0", default-features = false, features = ["sha1"] }
+once_cell = "1.21.4"
+regex = "1"
+schemars = "0.8.22"
+serde = { version = "1.0.229", features = ["derive"] }
+similar = "2.7.0"
+tempfile = "3.27.0"
+thiserror = "1.0.69"
+tokio = { version = "1.53.1", features = ["macros", "process", "rt", "time"] }
+ts-rs = { version = "11.1.0", features = ["uuid-impl", "serde-json-impl", "no-serde-warnings"] }
+walkdir = "2.5.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
+[lib]
+doctest = false

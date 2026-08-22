@@ -14,6 +14,7 @@ permissions:
 
 env:
   JAVA_VERSION: '17'
+  CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   android:
@@ -23,6 +24,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -30,10 +33,10 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Run tests, lint, mockDebug, and dependency SBOM
         shell: bash
-        run: ./gradlew --no-daemon --stacktrace testMockDebugUnitTest lintMockDebug assembleMockDebug cyclonedxBom
+        run: ./gradlew --no-daemon --stacktrace testMockDebugUnitTest lintMockDebug assembleMockDebug verifyRustlsPlatformVerifierSource cyclonedxBom
       - name: Enforce dependency license policy
         shell: pwsh
         run: ./scripts/verify-sbom.ps1
@@ -41,7 +44,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: android-ci-${{ github.sha }}
+          name: android-ci-${{ env.CANDIDATE_SHA }}
           if-no-files-found: warn
           path: |
             **/build/reports/**
@@ -51,12 +54,14 @@ jobs:
             build/reports/cyclonedx/bom.xml
 
   native:
-    name: Rust scaffold, ARM64 cross-build, and feasibility report
+    name: Rust native runtime, ARM64 cross-build, and feasibility report
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -93,38 +98,79 @@ jobs:
         run: |
           manifest='Cargo.toml'
           [[ -f native/Cargo.toml ]] && manifest='native/Cargo.toml'
-          cargo clippy --manifest-path "$manifest" --workspace --all-targets --all-features -- -D warnings
+          cargo clippy --locked --manifest-path "$manifest" --workspace --all-targets --all-features -- -D warnings
       - name: Rust tests
         shell: bash
         run: |
           manifest='Cargo.toml'
           [[ -f native/Cargo.toml ]] && manifest='native/Cargo.toml'
-          cargo test --manifest-path "$manifest" --workspace --all-features
+          cargo test --locked --manifest-path "$manifest" --workspace --all-features
       - name: Enforce Cargo license policy
         shell: pwsh
         run: ./scripts/verify-cargo-licenses.ps1
-      - name: Cross-build the JNI boundary for ARM64 Android
+      - name: Configure the ARM64 Android toolchain
         shell: bash
         run: |
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$sdk_root/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
-          test -x "$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"
-          cargo build --manifest-path native/Cargo.toml --target aarch64-linux-android --release
-      - name: Generate the fail-closed upstream feasibility report
-        continue-on-error: true
+          ndk="$sdk_root/ndk/28.2.13676358"
+          toolchain="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          cc="$toolchain/aarch64-linux-android29-clang"
+          ar="$toolchain/llvm-ar"
+          export ANDROID_NDK_ROOT="$ndk"
+          export ANDROID_NDK_HOME="$ndk"
+          export CC_aarch64_linux_android="$cc"
+          export AR_aarch64_linux_android="$ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$cc"
+          test -d "$ndk"
+          test -x "$cc"
+          test -x "$ar"
+          {
+            echo "ANDROID_NDK_ROOT=$ndk"
+            echo "ANDROID_NDK_HOME=$ndk"
+            echo "CC_aarch64_linux_android=$cc"
+            echo "AR_aarch64_linux_android=$ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$cc"
+          } >> "$GITHUB_ENV"
+      - name: Hard-gate the exact native candidate binary
+        shell: pwsh
+        run: ./native/gate.ps1 -ReportPath native/gate-report.local.json
+      - name: Extract candidate native debug symbols
         shell: bash
-        run: ./gradlew --no-daemon --stacktrace nativeGateReport
+        run: |
+          so='native/target/aarch64-linux-android/release/libusage_ring_codex.so'
+          objcopy="$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objcopy"
+          test -s "$so" && test -x "$objcopy"
+          "$objcopy" --only-keep-debug "$so" "$so.dbg"
+      - name: Package the exact native release and physical-device candidates
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace assembleNativeRelease assembleNativeDebug assembleNativeDebugAndroidTest cyclonedxBom
+      - name: Validate vendored verifier provenance and explicit SBOM component
+        shell: pwsh
+        run: |
+          ./scripts/verify-rustls-vendor.ps1
+          ./scripts/ensure-release-sbom.ps1
+          ./scripts/verify-sbom.ps1 -RequireRustlsVerifier
+      - name: Verify the static physical-device candidate
+        shell: pwsh
+        run: ./scripts/device/physical-device-preflight.ps1 -PrepareOnly -ExpectedSourceCommit $env:CANDIDATE_SHA -ReleaseApkPath 'app/build/outputs/apk/native/release/app-native-release-unsigned.apk' -RawNativeLibraryPath 'native/target/aarch64-linux-android/release/libusage_ring_codex.so' -NdkRoot "$env:ANDROID_NDK_ROOT"
       - name: Upload native reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: native-ci-${{ github.sha }}
+          name: native-ci-${{ env.CANDIDATE_SHA }}
           if-no-files-found: warn
           path: |
             **/build/reports/**
             **/build/test-results/**
             native/gate-report.local.json
             native/target/aarch64-linux-android/release/libusage_ring_codex.so
+            native/target/aarch64-linux-android/release/libusage_ring_codex.so.dbg
+            app/build/outputs/apk/native/debug/app-native-debug.apk
+            app/build/outputs/apk/native/release/app-native-release-unsigned.apk
+            app/build/outputs/apk/androidTest/native/debug/app-native-debug-androidTest.apk
+            app/build/reports/physical-device/static-apk.json
+            build/reports/cyclonedx/bom.json
+            build/reports/cyclonedx/bom.xml
 
   supply-chain:
     name: Secret scan and dependency review
@@ -136,11 +182,25 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Scan repository for secrets
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_VERSION: 8.30.1
+      - name: Run fail-closed supply-chain fixtures
+        shell: pwsh
+        run: ./scripts/release/test-supply-chain.ps1
       - name: Review dependency changes
         if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        # v5 runs on the Node 24 runtime. Keep the immutable commit pin so a
+        # tag move cannot alter this security gate.
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # High and critical advisories fail the job; no GHSA is allowlisted.
+          # A package is exempt only after it is absent from the target graph,
+          # which must be demonstrated by the native gate evidence.
+          fail-on-severity: high
