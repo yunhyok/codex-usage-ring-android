@@ -17,8 +17,8 @@ use codex_app_server_client::{
     TypedRequestError,
 };
 use codex_app_server_protocol::{
-    CancelLoginAccountParams, ClientRequest, LoginAccountParams, LoginAccountResponse, RequestId,
-    ServerNotification,
+    CancelLoginAccountParams, ClientRequest, GetAccountRateLimitsResponse, LoginAccountParams,
+    LoginAccountResponse, RequestId, ServerNotification,
 };
 use codex_arg0::Arg0DispatchPaths;
 use codex_config::{CloudConfigBundleLoader, LoaderOverrides};
@@ -265,21 +265,25 @@ impl RuntimeController {
             // an unexpected server request is fail-closed rather than
             // silently discarded.
             drain_client_events(&mut client, Duration::from_millis(2)).await?;
-            let response = match tokio::time::timeout(
-                REQUEST_TIMEOUT,
-                client.request_typed(ClientRequest::GetAccountRateLimits {
-                    request_id: id,
-                    params: None,
-                }),
-            )
-            .await
-            {
-                Ok(response) => response,
-                Err(_) => Err(codex_app_server_client::TypedRequestError::Transport {
-                    method: "account/rateLimits/read".to_string(),
-                    source: std::io::Error::new(std::io::ErrorKind::TimedOut, "request timeout"),
-                }),
-            };
+            let response: Result<GetAccountRateLimitsResponse, TypedRequestError> =
+                match tokio::time::timeout(
+                    REQUEST_TIMEOUT,
+                    client.request_typed(ClientRequest::GetAccountRateLimits {
+                        request_id: id,
+                        params: None,
+                    }),
+                )
+                .await
+                {
+                    Ok(response) => response,
+                    Err(_) => Err(codex_app_server_client::TypedRequestError::Transport {
+                        method: "account/rateLimits/read".to_string(),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "request timeout",
+                        ),
+                    }),
+                };
             // The patched handler emits AccountUpdated before returning
             // its typed response. Observe only events that arrive after
             // the pre-request drain; retain the bit even on HTTP failure.
