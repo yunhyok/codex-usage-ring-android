@@ -150,12 +150,36 @@ The physical-only test classes are:
   invariants, horizontal/vertical resize policy, and home-screen category.
 - `NativeRebootRecoveryDeviceTest`: one post-reboot authenticated refresh plus
   preserved unique work and widget binding.
+- `NativeAuthRefreshEvidenceDeviceTest`: a manually enabled, argument-gated
+  natural-refresh check. Ordinary connected tests skip it unless all of these
+  non-secret instrumentation arguments are supplied:
+
+  ```text
+  usageRingNaturalRefreshEvidence=true
+  baselineObservationCount=<nonnegative decimal count captured before waiting>
+  notBeforeEpochMillis=<positive decimal wall-clock boundary captured with the baseline>
+  ```
+
+  Capture the baseline count and local wall-clock boundary from the app's
+  `authRefreshEvidence()` API at candidate-install time, then wait for the
+  normal managed-auth expiry/refresh condition without editing auth state. Run
+  exactly one ordinary repository refresh with the arguments above (for
+  example, via `-Pandroid.testInstrumentationRunnerArguments.usageRingNaturalRefreshEvidence=true`,
+  `-Pandroid.testInstrumentationRunnerArguments.baselineObservationCount=...`,
+  and `-Pandroid.testInstrumentationRunnerArguments.notBeforeEpochMillis=...`).
+  The test requires a newly increased local observation marker and performs no
+  forced-refresh RPC. Repeating ordinary reads cannot force token expiry or
+  refresh. Device-code login is considered authenticated only after its
+  matching post-login `AccountUpdated` notification is consumed, so that login
+  event cannot satisfy the natural-refresh marker. Do not record the count, timestamp, usage values, account data, or
+  raw test output in evidence.
 
 This is a partial local result. Actual token-expiry refresh, uninstall, reviewer
 identity, and CI-commit binding are still pending. Successful authenticated
 reads prove the request path but do not prove that a token actually expired and
 refreshed: `AuthManager::auth()` may return the old auth after a failed refresh,
-and `account/rateLimits/read` exposes no refresh marker. The pinned source also
+and only the new request-scoped non-secret observation marker proves the
+managed-auth revision changed. The pinned source also
 defines no fixed provider token lifetime, so an arbitrary clock wait cannot
 satisfy this gate. It remains pending without inspecting or manipulating secret
 auth material or adding a caller-forced refresh JNI. The partial result cannot

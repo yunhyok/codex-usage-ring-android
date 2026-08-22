@@ -24,8 +24,8 @@ change = "Emit only an allowlisted usageRingCategory and a generic message for d
 
 [files."codex-rs/app-server/src/request_processors/account_processor.rs"]
 upstream_sha256 = "737B82796346B0011F71FD096690635C17FA80A7E60A9CDD83BA1F6A4053B6FF"
-patched_sha256 = "0A90C7329E1AB1BF1E97A3556DEAB80FBBCACA4ECDA961EF3198E2832E3B3B94"
-change = "Classify device-code start failures into stable non-secret categories before constructing the JSON-RPC error; add deterministic category and port-number regression tests."
+patched_sha256 = "491E915FDFE580ACBCFEE3532CE16C8B3C26C18FDFC996E25E7B2D62FD14E1A0"
+change = "Classify device-code start failures into stable non-secret categories and emit AccountUpdated only when rate-limit auth acquisition changes the managed-auth revision."
 
 [files."reqwest-0.12.28/Cargo.toml"]
 upstream_sha256 = "23C8A0827AAAC74059965A182C6873990E75AA550E8079D3B51BB95092871205"
@@ -75,7 +75,11 @@ sha256 = "3922B9110AEE8A3E7326C3C0CE8DD3FF36881802D9DFA9290AC85E9DA789B8F6"
 file = "patches/app-server-device-login-error-category.patch"
 sha256 = "14B1B07F07912F0178BD37DBC6D49A8001F9E76CB333ABB524236B73CBFA5714"
 
+[patches.auth_refresh_evidence]
+file = "patches/app-server-auth-refresh-evidence.patch"
+sha256 = "A02C6CD717D1D81C2ECA2590C9F87B606887FC54C536160F6F0CFFD345717029"
+
 [trees."patches/app-server"]
 file_count = 101
-patched_sha256 = "7134F2FB8B28B6505DC14F9060C250244B28909A8829A4FDA064709DCA055972"
+patched_sha256 = "A0EE958FBBFF4B0AD7A1626E588A7F1E143BFDE576028FA7E096D3863D182C20"
 algorithm = "SHA-256 over UTF-8 lines '<file-sha256-lower>  <relative-path-with-forward-slashes>', path-sorted, final newline; ignored tests/ subtree excluded"

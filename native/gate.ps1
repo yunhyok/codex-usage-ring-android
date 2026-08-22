@@ -401,6 +401,7 @@ $runtimeFlag = [regex]::Match($runtimeBlock, '(?m)^linked\s*=\s*(true|false)\s*$
 $recordedAppServerManifestHash = [regex]::Match($runtimeBlock, '(?m)^app_server_cargo_manifest_sha256\s*=\s*"([0-9a-fA-F]{64})"\s*$').Groups[1].Value.ToLowerInvariant()
 $recordedAppServerSourceTreeFileCount = [int]([regex]::Match($runtimeBlock, '(?m)^app_server_source_tree_file_count\s*=\s*(\d+)\s*$').Groups[1].Value)
 $recordedAppServerSourceTreeHash = [regex]::Match($runtimeBlock, '(?m)^app_server_source_tree_sha256\s*=\s*"([0-9a-fA-F]{64})"\s*$').Groups[1].Value.ToLowerInvariant()
+$recordedAuthRefreshEvidencePatchHash = [regex]::Match($runtimeBlock, '(?m)^auth_refresh_evidence_patch_sha256\s*=\s*"([0-9a-fA-F]{64})"\s*$').Groups[1].Value.ToLowerInvariant()
 $requiredPackages = @('codex-app-server', 'codex-app-server-client')
 $lockedPackages = @($requiredPackages | Where-Object {
     $cargoLockText -match "(?ms)^\[\[package\]\]\s+name\s*=\s*`"$([regex]::Escape($_))`".*?(?=^\[\[package\]\]|\z)"
@@ -419,6 +420,7 @@ $vendorAccountProcessor = Join-Path $vendorAppServer 'src/request_processors/acc
 $pluginPatchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-in-process-plugin-skip.patch'
 $androidInstallationPatchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-in-process-android-installation-id.patch'
 $deviceLoginErrorPatchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-device-login-error-category.patch'
+$authRefreshEvidencePatchFile = Join-Path $repoRoot 'third_party/openai-codex/patches/app-server-auth-refresh-evidence.patch'
 $vendorManifest = Join-Path $vendorAppServer 'Cargo.toml'
 $vendorSourceText = if (Test-Path -LiteralPath $vendorInProcess) { Get-Content -LiteralPath $vendorInProcess -Raw } else { '' }
 $vendorErrorCodeText = if (Test-Path -LiteralPath $vendorErrorCode) { Get-Content -LiteralPath $vendorErrorCode -Raw } else { '' }
@@ -427,12 +429,13 @@ $manifestText = if (Test-Path -LiteralPath $manifest) { Get-Content -LiteralPath
 $expectedPluginPatchHash = '31c11d95092364ba25d5748390252211b2ceb6fa8444d8ff6bfe81c48bc8d572'
 $expectedAndroidInstallationPatchHash = '3922b9110aee8a3e7326c3c0ce8dd3ff36881802d9dfa9290ac85e9da789b8f6'
 $expectedDeviceLoginErrorPatchHash = '14b1b07f07912f0178bd37dbc6d49a8001f9e76cb333abb524236b73cbfa5714'
+$expectedAuthRefreshEvidencePatchHash = 'a02c6cd717d1d81c2eca2590c9f87b606887fc54c536160f6f0cffd345717029'
 $expectedAppServerManifestHash = 'dda0d9d99cb84fbcd10d63a72757fc1677b44a8f7736f3d190dc3bf0c486650d'
 $expectedAppServerSourceTreeFileCount = 101
-$expectedAppServerSourceTreeHash = '7134f2fb8b28b6505dc14f9060c250244b28909a8829a4fda064709dca055972'
+$expectedAppServerSourceTreeHash = 'a0ee958fbbff4b0ad7a1626e588a7f1e143bfde576028fa7e096d3863d182c20'
 $expectedInProcessHash = '89250f5ef5dc3501d9bc5768ac6f43477ba36cb2c3e48eefb23c80ff51c4fede'
 $expectedErrorCodeHash = '74ab810d12a116928e5c6af69e36e80d0090be6107fbadc3f30b2ee07905636c'
-$expectedAccountProcessorHash = '0a90c7329e1ab1bf1e97a3556deab80fbbcaca4ecda961ef3198e2832e3b3b94'
+$expectedAccountProcessorHash = '491e915fdfe580acbcfee3532ce16c8b3c26c18fdfc996e25e7b2d62fd14e1a0'
 $expectedGixManifestHash = '44c57496572f5e75382398a7d2bdd9d7898b28e4043917b71ad7cdd0ed0f279a'
 $expectedGixSourceTreeHash = '612b653c5725b1285076a9f8a27461f16464d69cc97a82458c1b790b1ceffa15'
 $expectedDnsManifestHash = '7ac309c4323860cbc77c37ea0cd82aaa62d3716b6e8312b7ca7c4cce5c40d4a7'
@@ -440,6 +443,7 @@ $expectedDnsSourceHash = '9518b743adddbc5a0d54b7587f9d712cf575fe8fad23959c78ca14
 $pluginPatchHash = if (Test-Path -LiteralPath $pluginPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $pluginPatchFile).Hash.ToLowerInvariant() } else { '' }
 $androidInstallationPatchHash = if (Test-Path -LiteralPath $androidInstallationPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $androidInstallationPatchFile).Hash.ToLowerInvariant() } else { '' }
 $deviceLoginErrorPatchHash = if (Test-Path -LiteralPath $deviceLoginErrorPatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $deviceLoginErrorPatchFile).Hash.ToLowerInvariant() } else { '' }
+$authRefreshEvidencePatchHash = if (Test-Path -LiteralPath $authRefreshEvidencePatchFile) { (Get-FileHash -Algorithm SHA256 -LiteralPath $authRefreshEvidencePatchFile).Hash.ToLowerInvariant() } else { '' }
 $appServerManifestHash = if (Test-Path -LiteralPath $vendorManifest) { (Get-FileHash -Algorithm SHA256 -LiteralPath $vendorManifest).Hash.ToLowerInvariant() } else { '' }
 $appServerSourceTreeExclusions = @('tests')
 $appServerSourceTreeFileCount = if (Test-Path -LiteralPath $vendorAppServer -PathType Container) {
@@ -467,6 +471,12 @@ $vendorPatchOk = (Test-Path -LiteralPath $vendorInProcess) -and
     ($pluginPatchHash -eq $expectedPluginPatchHash) -and
     ($androidInstallationPatchHash -eq $expectedAndroidInstallationPatchHash) -and
     ($deviceLoginErrorPatchHash -eq $expectedDeviceLoginErrorPatchHash) -and
+    ($authRefreshEvidencePatchHash -eq $expectedAuthRefreshEvidencePatchHash) -and
+    ($recordedAuthRefreshEvidencePatchHash -eq $expectedAuthRefreshEvidencePatchHash) -and
+    ($vendorAccountProcessorText -match 'auth_change_receiver\(\)') -and
+    ($vendorAccountProcessorText -match 'auth_revision_before') -and
+    ($vendorAccountProcessorText -match 'auth_changes\.borrow\(\)\s*!=\s*auth_revision_before') -and
+    ($vendorAccountProcessorText -match 'AccountUpdated') -and
     ($recordedAppServerManifestHash -eq $expectedAppServerManifestHash) -and
     ($recordedAppServerSourceTreeFileCount -eq $expectedAppServerSourceTreeFileCount) -and
     ($recordedAppServerSourceTreeHash -eq $expectedAppServerSourceTreeHash) -and
@@ -482,7 +492,7 @@ $securityPatchOk = ($gixManifestHash -eq $expectedGixManifestHash) -and
     ($dnsSourceHash -eq $expectedDnsSourceHash) -and
     ($manifestText -match 'codex-git-utils\s*=\s*\{\s*path\s*=') -and
     ($manifestText -match 'rama-dns\s*=\s*\{\s*path\s*=')
-$runtimeMarker = 'usage-ring:codex-in-process:rust-v0.148.0:3ba0f711642a888aec92a611a3f3b2211157ff89:plugin-patch-sha256=' + $expectedPluginPatchHash + ':android-installation-id-patch-sha256=' + $expectedAndroidInstallationPatchHash + ':device-login-error-patch-sha256=' + $expectedDeviceLoginErrorPatchHash + ':app-server-cargo-manifest-sha256=' + $expectedAppServerManifestHash + ':app-server-source-tree-sha256=' + $expectedAppServerSourceTreeHash + ':app-server-in-process-sha256=' + $expectedInProcessHash + ':app-server-error-code-sha256=' + $expectedErrorCodeHash + ':app-server-account-processor-sha256=' + $expectedAccountProcessorHash + ':gix-manifest-sha256=' + $expectedGixManifestHash + ':gix-source-tree-sha256=' + $expectedGixSourceTreeHash + ':dns-manifest-sha256=' + $expectedDnsManifestHash + ':dns-source-sha256=' + $expectedDnsSourceHash + ':telemetry=false:plugins=false:mcp=false:shell=false'
+$runtimeMarker = 'usage-ring:codex-in-process:rust-v0.148.0:3ba0f711642a888aec92a611a3f3b2211157ff89:plugin-patch-sha256=' + $expectedPluginPatchHash + ':android-installation-id-patch-sha256=' + $expectedAndroidInstallationPatchHash + ':device-login-error-patch-sha256=' + $expectedDeviceLoginErrorPatchHash + ':auth-refresh-evidence-patch-sha256=' + $expectedAuthRefreshEvidencePatchHash + ':app-server-cargo-manifest-sha256=' + $expectedAppServerManifestHash + ':app-server-source-tree-sha256=' + $expectedAppServerSourceTreeHash + ':app-server-in-process-sha256=' + $expectedInProcessHash + ':app-server-error-code-sha256=' + $expectedErrorCodeHash + ':app-server-account-processor-sha256=' + $expectedAccountProcessorHash + ':gix-manifest-sha256=' + $expectedGixManifestHash + ':gix-source-tree-sha256=' + $expectedGixSourceTreeHash + ':dns-manifest-sha256=' + $expectedDnsManifestHash + ':dns-source-sha256=' + $expectedDnsSourceHash + ':telemetry=false:plugins=false:mcp=false:shell=false'
 $releaseSo = Join-Path $nativeRoot 'target/aarch64-linux-android/release/libusage_ring_codex.so'
 $soHash = ''
 $soSize = 0
@@ -566,6 +576,9 @@ $runtimeEvidence = [ordered]@{
     expected_android_installation_id_patch_sha256 = $expectedAndroidInstallationPatchHash
     device_login_error_patch_sha256 = $deviceLoginErrorPatchHash
     expected_device_login_error_patch_sha256 = $expectedDeviceLoginErrorPatchHash
+    auth_refresh_evidence_patch_sha256 = $authRefreshEvidencePatchHash
+    expected_auth_refresh_evidence_patch_sha256 = $expectedAuthRefreshEvidencePatchHash
+    recorded_auth_refresh_evidence_patch_sha256 = $recordedAuthRefreshEvidencePatchHash
     app_server_cargo_manifest_sha256 = $appServerManifestHash
     expected_app_server_cargo_manifest_sha256 = $expectedAppServerManifestHash
     recorded_app_server_cargo_manifest_sha256 = $recordedAppServerManifestHash

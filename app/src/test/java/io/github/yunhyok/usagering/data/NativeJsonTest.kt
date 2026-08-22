@@ -21,6 +21,18 @@ class NativeJsonTest {
         val limits = NativeJson.limits("""{"ok":true,"method":"readRateLimits","result":{"status":"unavailable"}}""").getOrThrow()
         assertNull(limits.fiveHourUsedPercent)
         assertNull(limits.sevenDayUsedPercent)
+        assertEquals(false, limits.authRefreshObserved)
+    }
+
+    @Test fun parsesOnlyBooleanRefreshEvidenceWithSafeFalseDefault() {
+        val observed = NativeJson.limits(
+            """{"ok":true,"method":"readRateLimits","result":{"auth_refresh_observed":true,"token":"never-read"}}""",
+        ).getOrThrow()
+        assertEquals(true, observed.authRefreshObserved)
+        val malformed = NativeJson.limits(
+            """{"ok":true,"method":"readRateLimits","result":{"auth_refresh_observed":"true"}}""",
+        ).getOrThrow()
+        assertEquals(false, malformed.authRefreshObserved)
     }
 
     @Test fun decodesExplicitWindowNamesWithoutGuessingPrimarySecondary() {

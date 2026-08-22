@@ -1062,11 +1062,26 @@ impl AccountRequestProcessor {
     async fn get_account_rate_limits_response(
         &self,
     ) -> Result<GetAccountRateLimitsResponse, JSONRPCErrorError> {
+        // `AuthManager::auth()` is the only managed-ChatGPT auth acquisition
+        // path used here.  Sample its non-secret revision immediately before
+        // acquisition and emit the existing account notification only when
+        // that acquisition changed the cached auth.  This deliberately does
+        // not expose token material or add a caller-forced refresh method.
+        let auth_changes = self.auth_manager.auth_change_receiver();
+        let auth_revision_before = *auth_changes.borrow();
         let Some(auth) = self.auth_manager.auth().await else {
             return Err(invalid_request(
                 "codex account authentication required to read rate limits",
             ));
         };
+
+        if *auth_changes.borrow() != auth_revision_before {
+            self.outgoing
+                .send_server_notification(ServerNotification::AccountUpdated(
+                    self.current_account_updated_notification(),
+                ))
+                .await;
+        }
 
         if !auth.uses_codex_backend() {
             return Err(invalid_request(

@@ -81,3 +81,27 @@ tokens, passwords, keystore paths, or signing material. The release workflow
 rejects missing files and non-passing status values, including either of the
 two nativeRelease proof statuses. This README is not evidence of a successful
 run.
+
+## Natural refresh evidence protocol
+
+`NativeAuthRefreshEvidenceDeviceTest` is the only supported natural-refresh
+evidence check. It is skipped by ordinary connected CI unless the Android
+instrumentation arguments below are explicitly enabled:
+
+```text
+usageRingNaturalRefreshEvidence=true
+baselineObservationCount=<nonnegative decimal count>
+notBeforeEpochMillis=<positive decimal epoch-millisecond boundary>
+```
+
+Capture the baseline count and local `notBeforeEpochMillis` boundary from the
+non-secret `authRefreshEvidence()` read immediately after installing the exact
+candidate. Wait for managed ChatGPT auth to reach its normal proactive-refresh
+condition, without editing auth material or invoking a caller-forced refresh.
+Then run one ordinary WorkManager/repository refresh with those arguments. The
+test passes only when the persisted observation count is newly greater than
+the supplied baseline and its observation time is not before the supplied
+boundary. Repeated ordinary reads cannot force token expiry or refresh. The
+physical evidence JSON must contain only pass/fail status and sanitized run
+metadata; never record counts, timestamps, usage, account identifiers, URLs,
+codes, tokens, or raw output.

@@ -98,7 +98,7 @@ in the in-process facade.
   retained in that directory.
 * The complete shipped patched build-input tree contains 101 files and has
   canonical SHA-256 digest
-  `7134F2FB8B28B6505DC14F9060C250244B28909A8829A4FDA064709DCA055972`.
+  `A0EE958FBBFF4B0AD7A1626E588A7F1E143BFDE576028FA7E096D3863D182C20`.
   The ignored, unshipped `tests/` subtree is excluded from this count and
   digest.
   The current vendored `Cargo.toml` digest is
@@ -136,12 +136,25 @@ in the in-process facade.
   to `74AB810D12A116928E5C6AF69E36E80D0090BE6107FBADC3F30B2EE07905636C`,
   and `src/request_processors/account_processor.rs` from upstream SHA-256
   `737B82796346B0011F71FD096690635C17FA80A7E60A9CDD83BA1F6A4053B6FF`
-  to `0A90C7329E1AB1BF1E97A3556DEAB80FBBCACA4ECDA961EF3198E2832E3B3B94`.
+  to the intermediate SHA-256
+  `0A90C7329E1AB1BF1E97A3556DEAB80FBBCACA4ECDA961EF3198E2832E3B3B94`.
   The patch converts provider/transport failure details to one allowlisted
   `usageRingCategory` value with a generic JSON-RPC message. Raw URLs,
   identifiers, tokens, and response bodies remain inside the app-server.
-  All three patches pass `git apply --check` against commit
-  `3ba0f711642a888aec92a611a3f3b2211157ff89`.
+
+* Auth-refresh evidence patch SHA-256:
+  `patches/app-server-auth-refresh-evidence.patch` =
+  `A02C6CD717D1D81C2ECA2590C9F87B606887FC54C536160F6F0CFFD345717029`.
+  This narrow patch applies after the device-login error-category patch and
+  adds only the auth revision sample/comparison and existing `AccountUpdated`
+  emission around the rate-limit handler. It introduces no token fields or
+  forced-refresh operation. The resulting `account_processor.rs` SHA-256 is
+  `491E915FDFE580ACBCFEE3532CE16C8B3C26C18FDFC996E25E7B2D62FD14E1A0`.
+
+  Apply order for the dependent account patches is the pinned upstream commit,
+  then `app-server-device-login-error-category.patch`, then
+  `app-server-auth-refresh-evidence.patch`. The plugin-startup and
+  Android-installation-ID patches remain independent app-server adaptations.
 
 The machine-readable provenance and hashes are in `upstream.toml`. The native
 runtime marker includes all patch-file hashes and resulting modified-source

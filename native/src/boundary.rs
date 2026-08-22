@@ -188,6 +188,9 @@ impl LoginResult {
 #[derive(Debug, Serialize, Default, PartialEq, Eq)]
 pub(crate) struct RateLimitsResult {
     status: &'static str,
+    /// True only when the rate-limits request observed an AccountUpdated
+    /// notification emitted by the server's auth acquisition for this read.
+    auth_refresh_observed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     five_hour_used_percent: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -203,9 +206,10 @@ pub(crate) struct RateLimitsResult {
 }
 
 impl RateLimitsResult {
-    pub(crate) fn from_snapshot(snapshot: &RateLimitSnapshot) -> Self {
+    pub(crate) fn from_snapshot(snapshot: &RateLimitSnapshot, auth_refresh_observed: bool) -> Self {
         let mut result = Self {
             status: "ok",
+            auth_refresh_observed,
             ..Self::default()
         };
         // Duration identifies named windows; primary/secondary are only a
@@ -573,10 +577,13 @@ mod tests {
 
     #[test]
     fn nested_rate_limit_windows_are_named_and_converted_to_millis() {
-        let result = RateLimitsResult::from_snapshot(&snapshot(
-            Some(window(42, Some(300), Some(1_700_000_000))),
-            Some(window(7, Some(10_080), None)),
-        ));
+        let result = RateLimitsResult::from_snapshot(
+            &snapshot(
+                Some(window(42, Some(300), Some(1_700_000_000))),
+                Some(window(7, Some(10_080), None)),
+            ),
+            false,
+        );
         assert_eq!(result.five_hour_used_percent, Some(42));
         assert_eq!(
             result.five_hour_reset_at_epoch_millis,
@@ -592,9 +599,22 @@ mod tests {
     }
 
     #[test]
+    fn auth_refresh_observation_is_explicit_and_non_secret() {
+        let result = RateLimitsResult::from_snapshot(
+            &snapshot(Some(window(42, Some(300), Some(1))), None),
+            true,
+        );
+        let encoded = serde_json::to_string(&result).unwrap();
+        assert!(encoded.contains("\"auth_refresh_observed\":true"));
+        assert!(!encoded.contains("secret-id-must-not-leak"));
+    }
+
+    #[test]
     fn sparse_null_and_invalid_windows_stay_absent() {
-        let result =
-            RateLimitsResult::from_snapshot(&snapshot(Some(window(101, Some(300), Some(1))), None));
+        let result = RateLimitsResult::from_snapshot(
+            &snapshot(Some(window(101, Some(300), Some(1))), None),
+            false,
+        );
         assert_eq!(
             result,
             RateLimitsResult {
@@ -606,30 +626,36 @@ mod tests {
 
     #[test]
     fn absent_duration_uses_ordinal_only_as_fallback() {
-        let result = RateLimitsResult::from_snapshot(&snapshot(
-            Some(window(10, None, None)),
-            Some(window(20, None, None)),
-        ));
+        let result = RateLimitsResult::from_snapshot(
+            &snapshot(Some(window(10, None, None)), Some(window(20, None, None))),
+            false,
+        );
         assert_eq!(result.five_hour_used_percent, Some(10));
         assert_eq!(result.seven_day_used_percent, Some(20));
     }
 
     #[test]
     fn unknown_explicit_duration_is_omitted_without_ordinal_guessing() {
-        let result = RateLimitsResult::from_snapshot(&snapshot(
-            Some(window(10, Some(301), None)),
-            Some(window(20, Some(-1), None)),
-        ));
+        let result = RateLimitsResult::from_snapshot(
+            &snapshot(
+                Some(window(10, Some(301), None)),
+                Some(window(20, Some(-1), None)),
+            ),
+            false,
+        );
         assert_eq!(result.five_hour_used_percent, None);
         assert_eq!(result.seven_day_used_percent, None);
     }
 
     #[test]
     fn extreme_explicit_duration_is_omitted_without_overflow_or_guessing() {
-        let result = RateLimitsResult::from_snapshot(&snapshot(
-            Some(window(10, Some(i64::MAX), None)),
-            Some(window(20, Some(i64::MIN), None)),
-        ));
+        let result = RateLimitsResult::from_snapshot(
+            &snapshot(
+                Some(window(10, Some(i64::MAX), None)),
+                Some(window(20, Some(i64::MIN), None)),
+            ),
+            false,
+        );
         assert_eq!(result.five_hour_used_percent, None);
         assert_eq!(result.seven_day_used_percent, None);
     }

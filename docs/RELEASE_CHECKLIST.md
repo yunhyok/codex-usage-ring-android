@@ -44,9 +44,18 @@ working tree that has not passed the hard native gate.
       it and the signed test copies after review.
       `restart_token_refresh` must not be marked pass from an arbitrary elapsed
       time or a successful rate-limit read alone: the pinned auth manager may
-      retain old auth after a failed refresh and the rate-limit response has no
-      refresh marker. Use only a reviewed, source-backed natural-expiry proof or
-      deterministic non-secret test signal; never inspect or modify token data.
+      retain old auth after a failed refresh. Use the manually enabled
+      `NativeAuthRefreshEvidenceDeviceTest` with exactly these runner arguments:
+      `usageRingNaturalRefreshEvidence=true`,
+      `baselineObservationCount=<nonnegative count captured at candidate
+      install>`, and
+      `notBeforeEpochMillis=<positive boundary captured with that baseline>`.
+      Wait for the normal managed-auth expiry condition, then run one ordinary
+      WorkManager/repository refresh. The test must observe a newly increased
+      non-secret marker/count; repeated ordinary reads cannot force expiry or
+      refresh. Never inspect or modify token data, and do not place counts,
+      timestamps, usage, account identifiers, or raw output in the evidence
+      JSON.
 - [ ] Review permissions and APK contents; verify that no debug certificate,
       unexpected network permission, or secret is present.
 

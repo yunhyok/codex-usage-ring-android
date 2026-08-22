@@ -63,18 +63,25 @@ maps the requested controls as follows:
 | --- | --- | --- |
 | `beginDeviceLogin` | `account/login/start` with `{type: chatgptDeviceCode}` | Return only verification URL/user code after a proven runtime integration |
 | `pollLogin` | Drain `account/login/completed` notification | No polling endpoint is invented |
-| `readRateLimits` | `account/rateLimits/read` | Keep only usage percentages/reset timestamps |
+| `readRateLimits` | `account/rateLimits/read` | Keep only usage percentages/reset timestamps plus boolean `auth_refresh_observed` |
 | `logout` | `account/logout` | Never accept credentials from the caller |
 
 The runtime links the public in-process client and typed account protocol:
 device-code login, event polling/cancel at 15 minutes, rate-limits read, and
-logout. It forces the file auth store, `EnvironmentManager::without_environments`,
+logout. After a successful `AccountLoginCompleted`, polling consumes the
+matching post-login `AccountUpdated` notification before exposing
+`authenticated`, preventing that login event from being mistaken for natural
+refresh evidence. It forces the file auth store, `EnvironmentManager::without_environments`,
 analytics/feedback/OTEL disabled, no state/log databases, and the patched
 `PluginStartupTasks::Skip`. Rate limits are reduced to named five-hour and
-seven-day fields (percent, minutes, reset epoch milliseconds); login exposes
-only HTTPS verification URL and user code. Caller-forced auth refresh is not
-exposed through JNI. `readRateLimits` still uses the pinned `AuthManager::auth`
-path, whose proactive refresh remains internal. A controlled token-expiry
+seven-day fields (percent, minutes, reset epoch milliseconds) plus the
+non-secret `auth_refresh_observed` boolean; login exposes only HTTPS
+verification URL and user code. Caller-forced auth refresh is not exposed
+through JNI. `readRateLimits` still uses the pinned `AuthManager::auth` path,
+whose proactive refresh remains internal. The marker is true only when that
+request's auth acquisition changes the managed-auth revision and the existing
+`AccountUpdated` notification is observed; stale queued notifications and
+login/logout events are drained before each read. A controlled token-expiry
 refresh has not been proven on the physical device.
 
 The same pinned app-server source has an Android-only installation-ID patch.

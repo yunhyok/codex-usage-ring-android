@@ -17,8 +17,8 @@ use codex_app_server_client::{
     TypedRequestError,
 };
 use codex_app_server_protocol::{
-    CancelLoginAccountParams, ClientRequest, GetAccountRateLimitsResponse, LoginAccountParams,
-    LoginAccountResponse, RequestId, ServerNotification,
+    CancelLoginAccountParams, ClientRequest, LoginAccountParams, LoginAccountResponse, RequestId,
+    ServerNotification,
 };
 use codex_arg0::Arg0DispatchPaths;
 use codex_config::{CloudConfigBundleLoader, LoaderOverrides};
@@ -58,6 +58,10 @@ impl RuntimeError {
 struct ActiveLogin {
     id: String,
     started: Instant,
+    // The app-server emits AccountLoginCompleted before its post-login reload
+    // work and the matching AccountUpdated notification. Do not expose the
+    // session as authenticated until that second notification is consumed.
+    completion_seen: bool,
 }
 
 struct Inner {
@@ -66,6 +70,10 @@ struct Inner {
     next_request_id: i64,
     active_login: Option<ActiveLogin>,
     authenticated: bool,
+    // A refresh notification can be delivered after a rate-limit request has
+    // already failed at the backend. Retain only this non-secret bit until a
+    // subsequent successful read can report it to Kotlin.
+    pending_auth_refresh_observed: bool,
     files_dir: Option<PathBuf>,
 }
 
@@ -88,6 +96,7 @@ impl RuntimeController {
                 next_request_id: 1,
                 active_login: None,
                 authenticated: false,
+                pending_auth_refresh_observed: false,
                 files_dir: None,
             }),
         })
@@ -158,6 +167,7 @@ impl RuntimeController {
         inner.active_login = Some(ActiveLogin {
             id: login_id,
             started: Instant::now(),
+            completion_seen: false,
         });
         Ok(LoginResult::challenge(verification_url, user_code))
     }
@@ -173,6 +183,13 @@ impl RuntimeController {
         };
         let active_id = active.id.clone();
         if active.started.elapsed() >= LOGIN_TIMEOUT {
+            if active.completion_seen {
+                // A successful completion must not be cancelled merely
+                // because its post-login AccountUpdated was delayed. Fail
+                // closed without exposing an unauthenticated session.
+                inner.active_login = None;
+                return Err(RuntimeError::Code(ErrorCode::RuntimeUnavailable));
+            }
             cancel_login(&mut inner, active_id)?;
             return Err(RuntimeError::Code(ErrorCode::LoginTimeout));
         }
@@ -188,59 +205,100 @@ impl RuntimeController {
         inner.client = Some(client);
         match event {
             Ok(Some(InProcessServerEvent::ServerNotification(note))) => {
+                let completion_seen = inner
+                    .active_login
+                    .as_ref()
+                    .is_some_and(|active| active.completion_seen);
+                if completion_seen && matches!(note.as_ref(), ServerNotification::AccountUpdated(_))
+                {
+                    inner.active_login = None;
+                    inner.authenticated = true;
+                    // A completed device login replaces the session; an
+                    // event observed for the previous session cannot
+                    // satisfy a future refresh gate.
+                    inner.pending_auth_refresh_observed = false;
+                    return Ok("authenticated");
+                }
                 if let ServerNotification::AccountLoginCompleted(completed) = note.as_ref()
                     && completed.login_id.as_deref() == Some(active_id.as_str())
                 {
-                    let success = completed.success;
+                    if completed.success {
+                        if let Some(active) = inner.active_login.as_mut() {
+                            active.completion_seen = true;
+                        }
+                        return Ok("waiting");
+                    }
                     inner.active_login = None;
-                    inner.authenticated = success;
-                    return if success {
-                        Ok("authenticated")
-                    } else {
-                        Err(RuntimeError::Code(ErrorCode::LoginFailed))
-                    };
+                    return Err(RuntimeError::Code(ErrorCode::LoginFailed));
                 }
                 Ok("waiting")
             }
             Ok(Some(InProcessServerEvent::ServerRequest(_))) => {
                 Err(RuntimeError::Code(ErrorCode::RuntimeUnavailable))
             }
-            Ok(Some(InProcessServerEvent::Lagged { .. })) | Err(_) => Ok("waiting"),
+            Ok(Some(InProcessServerEvent::Lagged { .. })) => {
+                Err(RuntimeError::Code(ErrorCode::RuntimeUnavailable))
+            }
+            Err(_) => Ok("waiting"),
             Ok(None) => Err(RuntimeError::Code(ErrorCode::RuntimeUnavailable)),
         }
     }
 
     pub fn read_rate_limits(&self) -> Result<RateLimitsResult, RuntimeError> {
         let mut inner = self.inner.lock().map_err(|_| RuntimeError::Message)?;
+        // WorkManager may run while device login is active. Keep login events
+        // exclusively on poll_login so the rate-limit pre-drain cannot consume
+        // AccountLoginCompleted or its post-login AccountUpdated notification.
+        if inner.active_login.is_some() {
+            return Err(RuntimeError::Code(ErrorCode::LoginInProgress));
+        }
         let id = RequestId::Integer(inner.next_request_id);
         inner.next_request_id = inner.next_request_id.saturating_add(1);
-        let client = inner
+        let mut client = inner
             .client
-            .as_ref()
+            .take()
             .ok_or(RuntimeError::Code(ErrorCode::NotReady))?;
-        let response: GetAccountRateLimitsResponse = inner
-            .runtime
-            .block_on(async {
-                tokio::time::timeout(
-                    REQUEST_TIMEOUT,
-                    client.request_typed(ClientRequest::GetAccountRateLimits {
-                        request_id: id,
-                        params: None,
-                    }),
-                )
-                .await
-                .map_err(|_| {
-                    codex_app_server_client::TypedRequestError::Transport {
-                        method: "account/rateLimits/read".to_string(),
-                        source: std::io::Error::new(
-                            std::io::ErrorKind::TimedOut,
-                            "request timeout",
-                        ),
-                    }
-                })?
-            })
-            .map_err(|_| RuntimeError::Code(ErrorCode::RateLimitsUnavailable))?;
-        Ok(RateLimitsResult::from_snapshot(&response.rate_limits))
+        let pending_before = inner.pending_auth_refresh_observed;
+        let request_result = inner.runtime.block_on(async {
+            // Events queued by login/logout or an earlier read are not
+            // evidence for this request. Drain them before dispatching;
+            // an unexpected server request is fail-closed rather than
+            // silently discarded.
+            drain_client_events(&mut client, Duration::from_millis(2)).await?;
+            let response = match tokio::time::timeout(
+                REQUEST_TIMEOUT,
+                client.request_typed(ClientRequest::GetAccountRateLimits {
+                    request_id: id,
+                    params: None,
+                }),
+            )
+            .await
+            {
+                Ok(response) => response,
+                Err(_) => Err(codex_app_server_client::TypedRequestError::Transport {
+                    method: "account/rateLimits/read".to_string(),
+                    source: std::io::Error::new(std::io::ErrorKind::TimedOut, "request timeout"),
+                }),
+            };
+            // The patched handler emits AccountUpdated before returning
+            // its typed response. Observe only events that arrive after
+            // the pre-request drain; retain the bit even on HTTP failure.
+            let observed = observe_account_refresh(&mut client).await?;
+            Ok((response, observed))
+        });
+        inner.client = Some(client);
+        let (response, observed_during_request) = request_result.map_err(RuntimeError::Code)?;
+        if observed_during_request {
+            inner.pending_auth_refresh_observed = true;
+        }
+        let response =
+            response.map_err(|_| RuntimeError::Code(ErrorCode::RateLimitsUnavailable))?;
+        let auth_refresh_observed = pending_before || inner.pending_auth_refresh_observed;
+        inner.pending_auth_refresh_observed = false;
+        Ok(RateLimitsResult::from_snapshot(
+            &response.rate_limits,
+            auth_refresh_observed,
+        ))
     }
 
     pub fn logout(&self) -> Result<(), RuntimeError> {
@@ -278,6 +336,7 @@ impl RuntimeController {
             .map_err(|_| RuntimeError::Code(ErrorCode::LogoutFailed))?;
         inner.active_login = None;
         inner.authenticated = false;
+        inner.pending_auth_refresh_observed = false;
         Ok(())
     }
 
@@ -292,7 +351,12 @@ impl RuntimeController {
         // request before dropping the client.  Even if the request times out
         // or races with completion, continue with shutdown; the app-server
         // shutdown path also cancels its ActiveLogin token.
-        if let Some(login_id) = inner.active_login.as_ref().map(|active| active.id.clone()) {
+        if let Some(login_id) = inner
+            .active_login
+            .as_ref()
+            .filter(|active| !active.completion_seen)
+            .map(|active| active.id.clone())
+        {
             let _ = cancel_login(&mut inner, login_id);
         }
 
@@ -303,6 +367,7 @@ impl RuntimeController {
         let shutdown_result = inner.runtime.block_on(client.shutdown());
         inner.active_login = None;
         inner.authenticated = false;
+        inner.pending_auth_refresh_observed = false;
         shutdown_result.map_err(|_| RuntimeError::Code(ErrorCode::RuntimeUnavailable))
     }
 }
@@ -432,6 +497,68 @@ fn cancel_login(inner: &mut Inner, login_id: String) -> Result<(), RuntimeError>
         .map_err(|_| RuntimeError::Code(ErrorCode::LoginTimeout))?;
     inner.active_login = None;
     Ok(())
+}
+
+/// Drain events already queued before a rate-limit request starts. The timeout
+/// is deliberately short and bounded; this is a best-effort queue drain,
+/// never a network wait or an auth operation. A server request is reported to
+/// the caller so it cannot be silently discarded.
+async fn drain_client_events(
+    client: &mut InProcessAppServerClient,
+    wait: Duration,
+) -> Result<(), ErrorCode> {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(25);
+    for _ in 0..64 {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Ok(());
+        }
+        match tokio::time::timeout(wait.min(remaining), client.next_event()).await {
+            Ok(Some(InProcessServerEvent::ServerRequest(_)))
+            | Ok(Some(InProcessServerEvent::Lagged { .. })) => {
+                return Err(ErrorCode::RuntimeUnavailable);
+            }
+            Ok(Some(_)) => continue,
+            Ok(None) | Err(_) => return Ok(()),
+        }
+    }
+    Err(ErrorCode::RuntimeUnavailable)
+}
+
+/// Observe only AccountUpdated notifications delivered after the request has
+/// completed. The patched rate-limit handler emits this existing notification
+/// when AuthManager's non-secret revision changes during auth acquisition.
+async fn observe_account_refresh(client: &mut InProcessAppServerClient) -> Result<bool, ErrorCode> {
+    let mut observed = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(150);
+    for _ in 0..64 {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Ok(observed);
+        }
+        let wait = if observed {
+            Duration::from_millis(2)
+        } else {
+            // Allow the app-server worker to forward the notification that was
+            // emitted immediately before the typed response.
+            Duration::from_millis(100)
+        };
+        match tokio::time::timeout(wait.min(remaining), client.next_event()).await {
+            Ok(Some(InProcessServerEvent::ServerNotification(note))) => {
+                if matches!(note.as_ref(), ServerNotification::AccountUpdated(_)) {
+                    observed = true;
+                }
+            }
+            Ok(Some(InProcessServerEvent::ServerRequest(_))) => {
+                return Err(ErrorCode::RuntimeUnavailable);
+            }
+            Ok(Some(InProcessServerEvent::Lagged { .. })) => {
+                return Err(ErrorCode::RuntimeUnavailable);
+            }
+            Ok(None) | Err(_) => return Ok(observed),
+        }
+    }
+    Err(ErrorCode::RuntimeUnavailable)
 }
 
 async fn start_client(files_dir: PathBuf) -> Result<InProcessAppServerClient, String> {

@@ -7,3 +7,4 @@
 *.webp binary
 *.aar binary
 *.apk binary
+third_party/openai-codex/patches/app-server-auth-refresh-evidence.patch -whitespace

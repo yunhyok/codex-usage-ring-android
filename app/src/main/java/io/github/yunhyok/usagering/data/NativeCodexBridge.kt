@@ -12,7 +12,23 @@ data class NativeRateLimits(
     val sevenDayUsedPercent: Double? = null,
     val sevenDayResetAtEpochMillis: Long? = null,
     val sevenDayWindowMinutes: Long? = null,
+    val authRefreshObserved: Boolean = false,
 )
+
+/** Local, non-secret evidence that a managed auth refresh was observed. */
+data class AuthRefreshEvidence(val observationCount: Long = 0L, val lastObservedAtEpochMillis: Long = 0L)
+
+internal fun recordAuthRefreshObservation(
+    previous: AuthRefreshEvidence,
+    observed: Boolean,
+    observedAtEpochMillis: Long,
+): AuthRefreshEvidence = if (!observed) {
+    previous
+} else {
+    AuthRefreshEvidence(previous.observationCount.saturatingIncrement(), observedAtEpochMillis.coerceAtLeast(0L))
+}
+
+private fun Long.saturatingIncrement(): Long = if (this == Long.MAX_VALUE) this else this + 1L
 
 data class NativeCallResult(val ok: Boolean, val status: String? = null, val errorCode: String? = null)
 
@@ -23,6 +39,8 @@ interface NativeCodexBridge {
     fun readRateLimits(): Result<NativeRateLimits>
     fun logout(): NativeCallResult
     fun shutdown(): NativeCallResult
+    /** Small instrumentation-facing read API; implementations expose no auth material. */
+    fun authRefreshEvidence(): AuthRefreshEvidence = AuthRefreshEvidence()
     fun deviceCodeLogin(): DeviceCodeLoginState = beginDeviceLogin().fold(
         { DeviceCodeLoginState.AwaitingUser(it.verificationUri, it.userCode) },
         { DeviceCodeLoginState.Unavailable },
@@ -98,15 +116,19 @@ internal object NativeJson {
             sevenDayUsedPercent = dto.optionalDouble("seven_day_used_percent")?.validPercent(),
             sevenDayResetAtEpochMillis = dto.optionalLong("seven_day_reset_at_epoch_millis"),
             sevenDayWindowMinutes = dto.optionalLong("seven_day_window_minutes"),
+            authRefreshObserved = dto.optionalBoolean("auth_refresh_observed"),
         )
     }
 
     private fun JSONObject.optionalLong(name: String): Long? = if (has(name) && !isNull(name)) optLong(name).takeIf { it > 0L } else null
     private fun JSONObject.optionalDouble(name: String): Double? = if (has(name) && !isNull(name)) optDouble(name).takeIf { it.isFinite() } else null
+    private fun JSONObject.optionalBoolean(name: String): Boolean = opt(name) as? Boolean ?: false
     private fun Double.validPercent(): Double? = takeIf { it in 0.0..100.0 }
 }
 
 class DefaultNativeCodexBridge(private val context: Context) : NativeCodexBridge {
+    private val evidencePreferences = context.getSharedPreferences("codex_auth_refresh_evidence", Context.MODE_PRIVATE)
+
     private fun startRequest(): String {
         val path = context.filesDir.resolve("codex").canonicalPath.replace("\\", "\\\\").replace("\"", "\\\"")
         return "{\"filesDir\":\"$path\",\"schemaVersion\":1}"
@@ -116,14 +138,49 @@ class DefaultNativeCodexBridge(private val context: Context) : NativeCodexBridge
     override fun beginDeviceLogin(): Result<DeviceCodeChallenge> = runCatching {
         val started = start()
         if (!started.ok && started.errorCode != "NOT_READY") error(started.errorCode ?: "NATIVE_ERROR")
-        NativeJson.challenge(NativeCodexBridgeNative.beginDeviceLogin(emptyRequest())).getOrThrow()
+        NativeJson.challenge(NativeCodexBridgeNative.beginDeviceLogin(emptyRequest())).getOrThrow().also {
+            // A new device-login challenge may replace the current session;
+            // never let evidence from the prior account satisfy its gate.
+            clearAuthRefreshEvidence()
+        }
     }
     override fun pollLogin(): LoginPollResult = runCatching { NativeJson.poll(NativeCodexBridgeNative.pollLogin(emptyRequest())) }.getOrDefault(LoginPollResult.Failed("NATIVE_UNAVAILABLE"))
-    override fun readRateLimits(): Result<NativeRateLimits> = runCatching { NativeJson.limits(NativeCodexBridgeNative.readRateLimits(emptyRequest())).getOrThrow() }
+    override fun readRateLimits(): Result<NativeRateLimits> = runCatching {
+        NativeJson.limits(NativeCodexBridgeNative.readRateLimits(emptyRequest())).getOrThrow().also {
+            if (it.authRefreshObserved) recordAuthRefreshObservation()
+        }
+    }
     override fun logout(): NativeCallResult = runCatching {
         val started = start()
         if (!started.ok) return@runCatching started
-        NativeJson.call(NativeCodexBridgeNative.logout(emptyRequest()), "logout")
+        NativeJson.call(NativeCodexBridgeNative.logout(emptyRequest()), "logout").also {
+            if (it.ok) clearAuthRefreshEvidence()
+        }
     }.getOrDefault(NativeCallResult(false, errorCode = "NATIVE_UNAVAILABLE"))
     override fun shutdown(): NativeCallResult = runCatching { NativeJson.call(NativeCodexBridgeNative.shutdown(emptyRequest()), "shutdown") }.getOrDefault(NativeCallResult(false, errorCode = "NATIVE_UNAVAILABLE"))
+
+    override fun authRefreshEvidence(): AuthRefreshEvidence = AuthRefreshEvidence(
+        observationCount = evidencePreferences.getLong(KEY_COUNT, 0L).coerceAtLeast(0L),
+        lastObservedAtEpochMillis = evidencePreferences.getLong(KEY_LAST_OBSERVED_AT, 0L).coerceAtLeast(0L),
+    )
+
+    private fun recordAuthRefreshObservation() {
+        val current = authRefreshEvidence()
+        val next = recordAuthRefreshObservation(current, true, System.currentTimeMillis())
+        evidencePreferences.edit()
+            .putLong(KEY_COUNT, next.observationCount)
+            .putLong(KEY_LAST_OBSERVED_AT, next.lastObservedAtEpochMillis)
+            // Commit the tiny marker synchronously so a WorkManager process
+            // stop cannot lose evidence that was just observed.
+            .commit()
+    }
+
+    private fun clearAuthRefreshEvidence() {
+        evidencePreferences.edit().clear().commit()
+    }
+
+    private companion object {
+        const val KEY_COUNT = "observation_count"
+        const val KEY_LAST_OBSERVED_AT = "last_observed_at_epoch_millis"
+    }
 }
