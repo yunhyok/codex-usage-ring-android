@@ -19,6 +19,10 @@ its code, assets, and licenses are not copied into this repository. See
 
 ## Status
 
+The widget now defaults to one home-screen cell, supports horizontal and vertical
+resizing, and uses a bright green indicator. See the [2026-09-08 code review](docs/CODE_REVIEW_2026-09-08.md)
+for refresh-path fixes, automated checks and the still-pending live-device evidence.
+
 This repository is pre-release. The target milestone is `v0.1.0` (GitHub
 pre-release). A release is blocked until the native Rust gate and physical
 Android-device evidence are present and independently reviewed. The current

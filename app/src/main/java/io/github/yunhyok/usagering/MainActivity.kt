@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -193,13 +194,14 @@ private fun formatTime(epochMillis: Long): String = DateFormat.getTimeInstance(D
 
 @androidx.compose.runtime.Composable
 private fun UsageRing(remaining: Int?, label: String) {
+    val accent = colorResource(R.color.usage_accent)
     val progress = (remaining ?: 0).coerceIn(0, 100) / 100f
     Card {
         Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Canvas(Modifier.size(150.dp).semantics { contentDescription = label }) {
                 val stroke = 16.dp.toPx()
                 drawArc(Color.LightGray, -90f, 360f, false, style = Stroke(stroke, cap = StrokeCap.Round))
-                if (remaining != null) drawArc(Color(0xFF6750A4), -90f, 360f * progress, false, style = Stroke(stroke, cap = StrokeCap.Round))
+                if (remaining != null) drawArc(accent, -90f, 360f * progress, false, style = Stroke(stroke, cap = StrokeCap.Round))
                 drawCircle(Color(0xFF25232A), radius = size.minDimension * .20f)
                 drawCircle(Color.White, radius = size.minDimension * .10f, style = Stroke(3.dp.toPx()))
                 drawCircle(Color.White, radius = size.minDimension * .035f)

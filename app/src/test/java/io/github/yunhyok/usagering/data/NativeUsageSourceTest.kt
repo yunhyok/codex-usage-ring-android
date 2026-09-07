@@ -1,19 +1,26 @@
 package io.github.yunhyok.usagering.data
 
-import io.github.yunhyok.usagering.domain.UsageSnapshot
-import io.github.yunhyok.usagering.domain.mergeSparse
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class NativeUsageSourceTest {
-    @Test fun unavailableRefreshDoesNotAdvanceLastGoodTimestamp() = kotlinx.coroutines.test.runTest {
-        val source = NativeUsageSource(FakeBridge(startResult = NativeCallResult(false, errorCode = "NOT_READY")))
-        val previous = UsageSnapshot(capturedAtEpochMillis = 100L, error = true)
-        val merged = mergeSparse(previous, source.fetch(), 2_000L)
-        assertEquals(100L, merged.capturedAtEpochMillis)
-        assertEquals(false, merged.error)
-        assertNull(merged.fiveHour)
+    @Test fun failedNativeStartIsAnErrorRatherThanSuccessfulUnknownUsage() = kotlinx.coroutines.test.runTest {
+        for (code in listOf("NOT_READY", "NATIVE_UNAVAILABLE", "INVALID_REQUEST", "START_FAILED")) {
+            val bridge = FakeBridge(startResult = NativeCallResult(false, errorCode = code))
+            val failure = runCatching { NativeUsageSource(bridge).fetch() }.exceptionOrNull()
+            assertTrue("failed native start must propagate", failure is IllegalStateException)
+            assertEquals(code, failure?.message)
+            assertEquals(0, bridge.reads)
+        }
+    }
+    @Test fun blockingNativeCallsLeaveTheCallingThread() = kotlinx.coroutines.test.runTest {
+        val caller = Thread.currentThread()
+        val bridge = FakeBridge()
+        NativeUsageSource(bridge).fetch()
+        assertNotEquals(caller, bridge.startThread)
+        assertNotEquals(caller, bridge.readThread)
     }
 
     @Test fun explicitWindowValuesMapWithoutPrimarySecondaryGuessing() = kotlinx.coroutines.test.runTest {
@@ -37,11 +44,14 @@ class NativeUsageSourceTest {
         private val startResult: NativeCallResult = NativeCallResult(true),
         private val limits: NativeRateLimits = NativeRateLimits(),
     ) : NativeCodexBridge {
+        var startThread: Thread? = null
+        var readThread: Thread? = null
         var starts = 0
-        override fun start(): NativeCallResult { starts++; return startResult }
+        var reads = 0
+        override fun start(): NativeCallResult { startThread = Thread.currentThread(); starts++; return startResult }
         override fun beginDeviceLogin() = Result.failure<DeviceCodeChallenge>(IllegalStateException())
         override fun pollLogin() = LoginPollResult.Waiting
-        override fun readRateLimits() = Result.success(limits)
+        override fun readRateLimits(): Result<NativeRateLimits> { readThread = Thread.currentThread(); reads++; return Result.success(limits) }
         override fun logout() = NativeCallResult(true)
         override fun shutdown() = NativeCallResult(true)
     }

@@ -1,5 +1,11 @@
 # Validation status
 
+The [2026-09-08 source review](CODE_REVIEW_2026-09-08.md) fixes the 1×1 widget,
+contrast and refresh-path defects, with current JVM/emulator evidence. The
+physical-device rows below are historical; the 2026-09-04 follow-up observed
+`RATE_LIMITS_UNAVAILABLE`, and live recovery has not been verified since.
+Release readiness remains false.
+
 This file is a release record, not a blanket assurance. An item is **pass**
 only when its command output and, where applicable, its evidence file are
 attached to the release review. Until then it remains **not run** or **blocked**.

@@ -41,6 +41,7 @@ class MockUsageRepository(context: Context) : UsageRepository {
             fiveHour = UsageWindowData(usedPercent = used, resetAtEpochMillis = reset),
             sevenDay = UsageWindowData(used + 5.0, resetAtEpochMillis = if (scenario == Scenario.RESET_EXPIRED) reset else nowEpochMillis + 5 * 24 * 60 * 60 * 1000L),
             capturedAtEpochMillis = captured,
+            error = false,
         )
         snapshot = if (scenario == Scenario.RESET_EXPIRED || scenario == Scenario.STALE) {
             UsageSnapshot(result.fiveHour, result.sevenDay, captured)

@@ -11,10 +11,15 @@ import io.github.yunhyok.usagering.domain.UsageSnapshotPatch
 import io.github.yunhyok.usagering.domain.UsageWindowData
 import io.github.yunhyok.usagering.domain.mergeSparse
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private val Context.usageDataStore by preferencesDataStore("usage_ring")
 
 class StoredUsageRepository(private val context: Context, private val source: UsageSource) : UsageRepository {
+    private val refreshMutex = Mutex()
+
     private object Keys {
         val fiveUsed = doublePreferencesKey("five_used")
         val fiveReset = longPreferencesKey("five_reset")
@@ -39,9 +44,15 @@ class StoredUsageRepository(private val context: Context, private val source: Us
         )
     }
 
-    override suspend fun refresh(nowEpochMillis: Long): UsageSnapshot {
+    override suspend fun refresh(nowEpochMillis: Long): UsageSnapshot = refreshMutex.withLock {
         val previous = read(nowEpochMillis)
-        val patch = runCatching { source.fetch() }.getOrElse { UsageSnapshotPatch(error = true) }
+        val patch = try {
+            source.fetch()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            UsageSnapshotPatch(error = true)
+        }
         val merged = mergeSparse(previous, patch, nowEpochMillis)
         context.usageDataStore.edit { p ->
             merged.fiveHour?.usedPercent?.let { p[Keys.fiveUsed] = it }
@@ -53,6 +64,6 @@ class StoredUsageRepository(private val context: Context, private val source: Us
             p[Keys.captured] = merged.capturedAtEpochMillis
             p[Keys.error] = merged.error
         }
-        return merged
+        merged
     }
 }
