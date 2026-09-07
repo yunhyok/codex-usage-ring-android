@@ -1,20 +1,44 @@
-# Public source pin and API notes for the feasibility spike.  This file is
-# metadata only; the upstream repository is intentionally not vendored.
+# Public source pin and reproducibility metadata for the native runtime.
 source = "https://github.com/openai/codex.git"
 tag = "rust-v0.148.0"
 tag_object = "ab52d1794d47d47ecaeb0ec37fc00fa31593ecf3"
 commit = "3ba0f711642a888aec92a611a3f3b2211157ff89"
 
-# No local patch is applied.  A future integration must record every patch
-# here and in native/README.md before it can change the gate to GO.
-patches = []
+# The app-server package is consumed through this reviewed standalone path;
+# the full provenance, Apache notice, and modified-file hashes are in
+# third_party/openai-codex/upstream.toml.
+patches = [
+    "../third_party/openai-codex/patches/app-server-in-process-plugin-skip.patch",
+    "../third_party/openai-codex/patches/app-server-in-process-android-installation-id.patch",
+    "../third_party/openai-codex/patches/app-server-device-login-error-category.patch",
+    "../third_party/openai-codex/patches/app-server-auth-refresh-evidence.patch",
+]
 
 [runtime]
-# This remains false until Cargo links the pinned app-server client/runtime and
-# the physical Android acceptance matrix proves TLS, auth refresh, and plugin
-# suppression. Metadata or a successful JNI scaffold build cannot flip it.
-linked = false
+# Cargo now links the pinned app-server client/runtime. A physical Android
+# acceptance run is a separate gate and remains pending.
+linked = true
 required_packages = ["codex-app-server", "codex-app-server-client"]
+vendored_app_server = "../third_party/openai-codex/patches/app-server"
+app_server_cargo_manifest_sha256 = "dda0d9d99cb84fbcd10d63a72757fc1677b44a8f7736f3d190dc3bf0c486650d"
+app_server_source_tree_file_count = 101
+app_server_source_tree_sha256 = "a0ee958fbbff4b0ad7a1626e588a7f1e143bfde576028fa7e096d3863d182c20"
+app_server_source_tree_algorithm = "SHA-256 over UTF-8 lines '<file-sha256-lower>  <relative-path-with-forward-slashes>', path-sorted, final newline; ignored tests/ subtree excluded"
+plugin_startup = "Skip"
+plugin_patch_sha256 = "31c11d95092364ba25d5748390252211b2ceb6fa8444d8ff6bfe81c48bc8d572"
+android_installation_id_patch_sha256 = "3922b9110aee8a3e7326c3c0ce8dd3ff36881802d9dfa9290ac85e9da789b8f6"
+device_login_error_patch_sha256 = "14b1b07f07912f0178bd37dbc6d49a8001f9e76cb333abb524236b73cbfa5714"
+auth_refresh_evidence_patch_sha256 = "a02c6cd717d1d81c2eca2590c9f87b606887fc54c536160f6f0cffd345717029"
+app_server_in_process_sha256 = "89250f5ef5dc3501d9bc5768ac6f43477ba36cb2c3e48eefb23c80ff51c4fede"
+app_server_error_code_sha256 = "74ab810d12a116928e5c6af69e36e80d0090be6107fbadc3f30b2ee07905636c"
+app_server_account_processor_sha256 = "491e915fdfe580acbcfee3532ce16c8b3c26c18fdfc996e25e7b2d62fd14e1a0"
+android_installation_id = "app-private atomic UUIDv7 replacement; no advisory file lock"
+android_tls = "rustls-platform-verifier-0.7.0-TrustManager"
+device_login_start_error_boundary = "allowlisted usageRingCategory only; generic message; raw provider/transport detail excluded"
+# Explicit caller-forced refresh is not exposed across JNI. The pinned
+# AuthManager proactive refresh used internally by readRateLimits remains on.
+auth_refresh_supported = false
+physical_device_proof = false
 
 [api]
 in_process_start = "codex-rs/app-server/src/in_process.rs::start(InProcessStartArgs)"

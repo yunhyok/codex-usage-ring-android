@@ -27,11 +27,13 @@ class UsageModelsTest {
     }
 
     @Test fun sparseMergePreservesOmittedFields() {
-        val previous = UsageSnapshot(UsageWindowData(20.0, 123), UsageWindowData(40.0, 456), 10)
+        val previous = UsageSnapshot(UsageWindowData(20.0, 123, 300), UsageWindowData(40.0, 456, 10_080), 10)
         val merged = mergeSparse(previous, UsageSnapshotPatch(fiveHour = UsageWindowData(25.0)), 20)
         assertEquals(25.0, merged.fiveHour?.usedPercent)
         assertEquals(123L, merged.fiveHour?.resetAtEpochMillis)
+        assertEquals(300L, merged.fiveHour?.windowMinutes)
         assertEquals(40.0, merged.sevenDay?.usedPercent)
+        assertEquals(10_080L, merged.sevenDay?.windowMinutes)
     }
 
     @Test fun sparseMergePreservesAndExplicitlyClearsErrorState() {

@@ -1,0 +1,149 @@
+# Vendored from OpenAI Codex rust-v0.148.0 at commit
+# 3ba0f711642a888aec92a611a3f3b2211157ff89 (Apache-2.0). This standalone
+# manifest is a mechanically auditable Android build adaptation: workspace
+# dependencies are pinned to that commit and `edition` is retained as 2024.
+# See ../PATCHES.md and ../upstream.toml for source/modified-file hashes.
+[package]
+name = "codex-app-server"
+version = "0.148.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[[bin]]
+name = "codex-app-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "codex-app-server-test-notify-capture"
+path = "src/bin/notify_capture.rs"
+
+[[bin]]
+name = "exec-server"
+path = "src/bin/exec_server.rs"
+
+[lib]
+name = "codex_app_server"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+anyhow = { version = "1.0.104"  }
+base64 = { version = "0.21.7"  }
+axum = { version = "0.8.4", default-features = false, features = [
+    "http1",
+    "json",
+    "tokio",
+    "ws",
+] }
+codex-analytics = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-analytics"  }
+codex-agent-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-agent-extension"  }
+codex-arg0 = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-arg0"  }
+codex-cloud-config = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-cloud-config"  }
+codex-code-mode = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-code-mode"  }
+codex-config = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-config"  }
+codex-connectors = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-connectors"  }
+codex-core = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-core"  }
+codex-core-plugins = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-core-plugins"  }
+codex-diagnostics = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-diagnostics"  }
+codex-home = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-home"  }
+codex-exec-server = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-exec-server"  }
+codex-extension-api = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-extension-api"  }
+codex-external-agent-migration = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-external-agent-migration"  }
+codex-features = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-features"  }
+codex-goal-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-goal-extension"  }
+codex-git-attribution = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-git-attribution"  }
+codex-guardian = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-guardian"  }
+codex-guardian-v2 = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-guardian-v2"  }
+codex-git-utils = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-git-utils"  }
+codex-file-watcher = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-file-watcher"  }
+codex-hooks = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-hooks"  }
+codex-http-client = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-http-client"  }
+codex-otel = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-otel"  }
+codex-plugin = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-plugin"  }
+codex-shell-command = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-shell-command"  }
+codex-skills = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-skills"  }
+codex-skills-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-skills-extension"  }
+codex-utils-cli = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-cli"  }
+codex-utils-pty = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-pty"  }
+codex-backend-client = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-backend-client"  }
+codex-file-search = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-file-search"  }
+codex-chatgpt = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-chatgpt"  }
+codex-login = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-login"  }
+codex-image-generation-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-image-generation-extension"  }
+codex-memories-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-memories-extension"  }
+codex-web-search-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-web-search-extension"  }
+codex-memories-write = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-memories-write"  }
+codex-mcp = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-mcp"  }
+codex-mcp-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-mcp-extension"  }
+codex-model-provider = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-model-provider"  }
+codex-models-manager = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-models-manager"  }
+codex-protocol = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-protocol"  }
+codex-queue-extension = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-queue-extension"  }
+codex-app-server-protocol = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-app-server-protocol"  }
+codex-app-server-transport = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-app-server-transport"  }
+codex-feedback = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-feedback"  }
+codex-rmcp-client = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-rmcp-client"  }
+codex-rollout = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-rollout"  }
+codex-sandboxing = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-sandboxing"  }
+codex-state = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-state"  }
+codex-thread-store = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-thread-store"  }
+codex-tools = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-tools"  }
+codex-utils-absolute-path = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-absolute-path"  }
+codex-utils-json-to-toml = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-json-to-toml"  }
+codex-utils-path-uri = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-path-uri"  }
+chrono = { version = "0.4.45"  }
+clap = { version = "4.6.6" , features = ["derive"]  }
+futures = { version = "0.3.34"  }
+serde = { version = "1.0.229" , features = ["derive"]  }
+serde_json = { version = "1.0.151"  }
+sha2 = { version = "0.10.9"  }
+tempfile = { version = "3.27.0"  }
+thiserror = { version = "1.0.69"  }
+time = { version = "0.3.55"  }
+toml = { version = "0.9.12"  }
+toml_edit = { version = "0.24.1+spec-1.1.0"  }
+tokio = { version = "1.53.1", features = [
+    "io-std",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "signal",
+] }
+tokio-util = { version = "0.7.19"  }
+tracing = { version = "0.1.44" , features = ["log"]  }
+tracing-subscriber = { version = "0.3.23" , features = ["env-filter", "fmt", "json"]  }
+url = { version = "2.5.8"  }
+uuid = { version = "1.24.1" , features = ["serde", "v7"]  }
+
+[target.'cfg(windows)'.dependencies]
+codex-windows-sandbox = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-windows-sandbox"  }
+
+[dev-dependencies]
+app_test_support = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "app_test_support"  }
+axum = { version = "0.8.4", default-features = false, features = [
+    "http1",
+    "json",
+    "tokio",
+] }
+base64 = { version = "0.21.7"  }
+codex-model-provider-info = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-model-provider-info"  }
+codex-utils-cargo-bin = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "codex-utils-cargo-bin"  }
+core_test_support = { git = "https://github.com/openai/codex.git", rev = "3ba0f711642a888aec92a611a3f3b2211157ff89", package = "core_test_support"  }
+flate2 = { version = "1.1.9"  }
+hmac = { version = "0.12.1"  }
+opentelemetry = { version = "0.31.0"  }
+opentelemetry_sdk = { version = "0.31.0"  }
+pretty_assertions = { version = "1.4.1"  }
+reqwest = { version = "0.12.28" , features = ["rustls-tls"]  }
+rmcp = { version = "3.0.0", default-features = false, features = [
+    "elicitation",
+    "server",
+    "transport-streamable-http-server",
+] }
+serial_test = { version = "3.2.0"  }
+shlex = { version = "1.3.0"  }
+tar = { version = "0.4.45"  }
+test-case = "3.3.1"
+tokio-tungstenite = { version = "0.28.0"  }
+tracing-opentelemetry = { version = "0.32.1"  }
+wiremock = { version = "0.6"  }

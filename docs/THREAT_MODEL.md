@@ -20,29 +20,59 @@ backend, telemetry service, or account system.
 
 ## Expected permissions
 
-The source manifest directly requests `POST_NOTIFICATIONS`, which is presented
-only after the user enables the quiet status notification on Android 13 or
-newer. The final merged APK also contains the following AndroidX WorkManager
-support permissions, verified with `aapt dump badging`:
+The source manifest directly requests the following permissions:
+
+- `POST_NOTIFICATIONS`: requested only after the user enables the quiet status
+  notification on Android 13 or newer.
+- `INTERNET`: required by the in-process Codex client for system-verified TLS.
+- `RECEIVE_BOOT_COMPLETED`: used by the app's non-exported boot receiver to
+  restore persisted periodic WorkManager scheduling.
+- `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_DATA_SYNC`: used only by the
+  non-exported, user-started device-login polling service. That service stops
+  on success, cancellation, failure, or the 15-minute limit. The ordinary
+  usage-status notification is not a foreground-service notification.
+
+The final merged APK also contains AndroidX WorkManager support permissions,
+verified with `aapt dump badging`:
 
 - `ACCESS_NETWORK_STATE`: enforces the connected-network refresh constraint.
 - `WAKE_LOCK`: lets WorkManager finish a scheduled refresh safely.
-- `RECEIVE_BOOT_COMPLETED`: lets WorkManager restore persisted periodic work
-  after reboot; Usage Ring does not export its own boot receiver.
 - the package-scoped `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`: AndroidX's
   signature-level guard for dynamically registered non-exported receivers.
 
-WorkManager's optional generic `FOREGROUND_SERVICE` permission is explicitly
-removed from the merged manifest because the current refresh worker never uses
-the foreground path.
+The release reviewer must compare the merged manifest and `apkanalyzer`
+permission output with this document. Any unexplained permission is a release
+blocker.
 
-The native login implementation will additionally need `INTERNET`,
-`FOREGROUND_SERVICE`, and a user-started `dataSync` foreground-service
-declaration, but those permissions
-must not be added to a distributable release until the native gate passes and
-the service exists. The release reviewer must compare the merged manifest and
-`apkanalyzer` permission output with this document. Any unexplained permission
-is a release blocker.
+## TLS revocation-fetch exception
+
+The application keeps `android:usesCleartextTraffic="false"`, trusts only the
+Android system certificate store, and does not disable certificate or hostname
+verification. Its [Network Security Configuration](https://developer.android.com/privacy-and-security/security-config)
+contains one exact-domain exception: cleartext is permitted for
+`c.pki.goog` with `includeSubdomains="false"`. This is limited to the public
+CA certificate-revocation-list distribution request made by Android's platform
+verifier; the Codex authentication and API connections remain HTTPS.
+
+This narrow exception addresses the Android CRL-fetch behavior documented by
+the platform-verifier maintainers in
+[rustls-platform-verifier PR #179](https://github.com/rustls/rustls-platform-verifier/pull/179).
+There is no wildcard, user/raw trust anchor, debug override, private CA, or
+webpki fallback. If the live certificate's CRL distribution host changes,
+login must fail closed until the new chain and exact host are reviewed and the
+physical TLS/login gate is repeated.
+
+The verifier implementation is vendored and source-visible under
+`../third_party/rustls-platform-verifier-android/` from rustls-platform-verifier
+v0.7.0 commit `996b1c903491641b17b3c9afb65d1352f6fc6b76`. Its PKIX checker
+retains `SOFT_FAIL` and `ONLY_END_ENTITY`; `PREFER_CRLS` is added only when no
+stapled OCSP response exists. The OCSP/CRL fallback path remains enabled and
+`NO_FALLBACK` is omitted. Its system trust-anchor collision scan advances for
+deleted or malformed anchors, avoiding an unbounded verification loop. CI
+checks the exact JNI package/signature, `BuildConfig.TEST = false`, vendored
+source hashes, collision-scan invariant, and these option invariants before
+every native compile/package path. The mock flavor does not compile the
+verifier source.
 
 ## Out of scope
 

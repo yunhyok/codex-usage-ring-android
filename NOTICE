@@ -14,6 +14,21 @@ Third-party dependencies are listed in their own license and notice files (or
 in the generated release SBOM) and are not relicensed by this notice.
 
 The pinned OpenAI Codex source attribution and license pointer are included in
-`third_party/openai-codex/`. No Codex runtime is currently redistributed in an
-APK; those files preserve the required notice boundary if the gated source
-integration later succeeds.
+`third_party/openai-codex/`. The vendored, separately patched Codex app-server
+source is part of the native build graph, retains its Apache-2.0 notices, and is
+not an OpenAI product or endorsement. Release publication remains gated on the
+reviewed native and physical-device evidence described in the documentation.
+
+The Android dependency adaptation includes `rama-dns` 0.3.0-alpha.4,
+Copyright (c) 2022-2025 Glen Henri J. De Cauwsemaecker, under MIT OR
+Apache-2.0. Its unmodified license texts and the exact modified-file hashes are
+retained under `third_party/openai-codex/patches/rama-dns-0.3.0-alpha.4/`.
+
+The Android platform verifier source is derived from
+rustls-platform-verifier v0.7.0, commit
+996b1c903491641b17b3c9afb65d1352f6fc6b76, Copyright (c) 2022 1Password,
+under MIT OR Apache-2.0. The modified vendored source files, exact source URL,
+and license texts are retained under
+`third_party/rustls-platform-verifier-android/`; their reviewed SHA-256 values
+are recorded in that directory's README and PROVENANCE.json and enforced by
+the independent vendor and release SBOM checks before native builds.

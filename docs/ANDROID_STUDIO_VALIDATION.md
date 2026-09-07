@@ -91,6 +91,101 @@ notification dismissal/restoration, offline recovery, logout/re-login, reboot,
 and uninstall. Sanitize serial numbers, account identifiers, codes, and logs
 before committing evidence.
 
+### Local API 36 progress (2026-08-22)
+
+The current patched ARM64 candidate identified by SHA-256
+`c5ecae5f39d7b5076e5c21ff61ad32a8e136a8591d93291b8b21f57df1fcafcc`
+passed data-preserving install, launch, native load, fresh logout/re-login through
+the system-trust device-code flow, process recreation, one authenticated
+rate-limit read, and 25 sequential authenticated refreshes. The immediately
+preceding candidate also passed notification cancellation/republication,
+offline cache preservation and online recovery, and user-performed widget
+add/resize. The patched candidate preserved that widget binding after update.
+A read-only WorkManager check confirmed boot restoration is enabled with
+exactly one active unique refresh job. A physical reboot followed by unlock
+also preserved authentication, the bound widget, that unique work item, and one
+live rate-limit refresh. A separate runtime-policy instrumentation test
+confirmed the exact six-method JNI surface, disabled telemetry, plugin, MCP,
+and shell capabilities, the exact `c.pki.goog` cleartext CRL exception with an
+unrelated host denied, and that explicit caller-forced auth refresh is not
+exposed through JNI.
+
+In the pinned `rust-v0.148.0` source, regular managed ChatGPT auth calls the
+internal proactive-refresh path from `AuthManager::auth()`. A parseable access
+token is eligible when its `exp` is within five minutes; the fallback for a
+missing/unusable `exp` is an eight-day `last_refresh` age. API-key, PAT, external
+bearer, and other auth modes do not use this trigger. The relevant pinned source
+is `codex-rs/login/src/auth/manager.rs` (`auth`,
+`should_refresh_proactively`, and `refresh_token`) and
+`codex-rs/login/src/token_data.rs`; its revision is bound by
+`third_party/openai-codex/upstream.toml`.
+
+The instrumentation assertions use fixed messages and do not write actual
+usage values, account identity, pairing material, app-private paths, raw JNI
+responses, logcat, screenshots, or UI hierarchies. Temporary notification
+permission and network changes were restored, and each test-only package was
+removed without uninstalling or clearing the target app. Sanitized local JSON
+records are under
+`app/build/reports/local-native-login-nsc-v5-device-api36/` and
+`app/build/reports/local-native-relogin-patch-v3-device-api36/` and remain
+gitignored. Native CI compiles and uploads the corresponding instrumentation APK
+without running it; execution remains restricted to the reviewed physical-device
+workflow.
+
+The physical-only test classes are:
+
+- `NativeRateLimitsDeviceTest`: 25 sequential authenticated reads and value
+  invariants.
+- `NativeNotificationDeviceTest`: quiet ongoing-channel policy and
+  cancel/repost behavior.
+- `NativeConnectivityDeviceTest`: offline cache preservation and online
+  recovery, run as separately selected methods around externally restored
+  network state.
+- `NativePolicyDeviceTest`: in-process disabled-capability metadata, exact JNI
+  allowlist, and runtime cleartext policy restricted to the CRL distribution
+  host.
+- `NativeWorkSchedulerDeviceTest`: read-only boot-restore and unique periodic
+  work state.
+- `NativeWidgetDeviceTest`: read-only launcher binding, current resize-option
+  invariants, horizontal/vertical resize policy, and home-screen category.
+- `NativeRebootRecoveryDeviceTest`: one post-reboot authenticated refresh plus
+  preserved unique work and widget binding.
+- `NativeAuthRefreshEvidenceDeviceTest`: a manually enabled, argument-gated
+  natural-refresh check. Ordinary connected tests skip it unless all of these
+  non-secret instrumentation arguments are supplied:
+
+  ```text
+  usageRingNaturalRefreshEvidence=true
+  baselineObservationCount=<nonnegative decimal count captured before waiting>
+  notBeforeEpochMillis=<positive decimal wall-clock boundary captured with the baseline>
+  ```
+
+  Capture the baseline count and local wall-clock boundary from the app's
+  `authRefreshEvidence()` API at candidate-install time, then wait for the
+  normal managed-auth expiry/refresh condition without editing auth state. Run
+  exactly one ordinary repository refresh with the arguments above (for
+  example, via `-Pandroid.testInstrumentationRunnerArguments.usageRingNaturalRefreshEvidence=true`,
+  `-Pandroid.testInstrumentationRunnerArguments.baselineObservationCount=...`,
+  and `-Pandroid.testInstrumentationRunnerArguments.notBeforeEpochMillis=...`).
+  The test requires a newly increased local observation marker and performs no
+  forced-refresh RPC. Repeating ordinary reads cannot force token expiry or
+  refresh. Device-code login is considered authenticated only after its
+  matching post-login `AccountUpdated` notification is consumed, so that login
+  event cannot satisfy the natural-refresh marker. Do not record the count, timestamp, usage values, account data, or
+  raw test output in evidence.
+
+This is a partial local result. Actual token-expiry refresh, uninstall, reviewer
+identity, and CI-commit binding are still pending. Successful authenticated
+reads prove the request path but do not prove that a token actually expired and
+refreshed: `AuthManager::auth()` may return the old auth after a failed refresh,
+and only the new request-scoped non-secret observation marker proves the
+managed-auth revision changed. The pinned source also
+defines no fixed provider token lifetime, so an arbitrary clock wait cannot
+satisfy this gate. It remains pending without inspecting or manipulating secret
+auth material or adding a caller-forced refresh JNI. The partial result cannot
+populate the release
+`physical-device.json` or authorize an APK release.
+
 Until that evidence and the Codex runtime cross-build are both `pass`, the
 repository may publish source and mock artifacts in CI, but must not publish a
 signed APK or create the `v0.1.0` tag.
