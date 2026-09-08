@@ -49,6 +49,25 @@ class NativeConnectivityDeviceTest {
         assertWindowValues(snapshot.sevenDay)
     }
 
+    /** One ordinary read; only fixed native categories may appear in failure output. */
+    @Test
+    fun ordinaryNativeReadReportsSanitizedFailure() {
+        org.junit.Assume.assumeTrue(
+            InstrumentationRegistry.getArguments().getString("usageRingNativeDiagnostic") == "true",
+        )
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val bridge = AppGraph.nativeBridge(context)
+        assertTrue("native diagnostic start must succeed", bridge.start().ok)
+        val result = bridge.readRateLimits()
+        val allowed = setOf(
+            "RATE_LIMITS_AUTH_REQUIRED", "RATE_LIMITS_BACKEND", "RATE_LIMITS_SERVER",
+            "RATE_LIMITS_TRANSPORT", "RATE_LIMITS_TIMEOUT", "RATE_LIMITS_DESERIALIZE",
+            "RATE_LIMITS_UNAVAILABLE", "NOT_READY", "RUNTIME_UNAVAILABLE", "LOGIN_IN_PROGRESS",
+        )
+        val category = result.exceptionOrNull()?.message?.takeIf { it in allowed }
+            ?: "UNCLASSIFIED_NATIVE_ERROR"
+        assertTrue("native rate-limit category: $category", result.isSuccess)
+    }
     private fun assertAuthenticated(context: Context) {
         val loginState = context.getSharedPreferences("codex_login_state", Context.MODE_PRIVATE)
         assertTrue(

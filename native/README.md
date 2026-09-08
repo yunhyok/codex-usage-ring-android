@@ -100,6 +100,13 @@ errors, URLs, response bodies, identifiers, and tokens are never returned by
 this diagnostic boundary. The patch file and both resulting source-file hashes
 are bound into the exported runtime marker and checked by `gate.ps1`.
 
+Rate-limit failures are separately reduced to stable `RATE_LIMITS_*` codes.
+The classifier inspects only the typed error variant, transport error kind,
+and JSON-RPC numeric code: `-32600` means the auth state/mode was rejected;
+`-32603` means backend failure or an empty response. It does not inspect or
+expose provider messages/data, distinguish TLS from HTTP backend failures, or
+change login state. The opt-in device diagnostic and evidence are described
+in [the physical follow-up](../docs/DEVICE_FOLLOWUP_2026-09-08.md).
 ## Reproducible gate
 
 Run from the repository root with PowerShell:

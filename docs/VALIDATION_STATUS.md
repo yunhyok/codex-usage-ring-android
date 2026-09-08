@@ -1,11 +1,13 @@
 # Validation status
 
 The [2026-09-08 source review](CODE_REVIEW_2026-09-08.md) fixes the 1×1 widget,
-contrast and refresh-path defects, with current JVM/emulator evidence. The
-physical-device rows below are historical; the 2026-09-04 follow-up observed
-`RATE_LIMITS_UNAVAILABLE`, and live recovery has not been verified since.
+contrast and refresh-path defects. The subsequent
+[physical-device follow-up](DEVICE_FOLLOWUP_2026-09-08.md) confirms a
+signature-compatible update of the exact main CI nativeRelease payload,
+five structural checks, and actual Samsung launcher resizing to 1×1.
+The ordinary authenticated usage read still failed. The table below retains
+historical evidence; live recovery and natural-refresh proof remain pending.
 Release readiness remains false.
-
 This file is a release record, not a blanket assurance. An item is **pass**
 only when its command output and, where applicable, its evidence file are
 attached to the release review. Until then it remains **not run** or **blocked**.

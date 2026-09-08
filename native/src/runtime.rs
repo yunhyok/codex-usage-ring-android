@@ -296,7 +296,7 @@ impl RuntimeController {
             inner.pending_auth_refresh_observed = true;
         }
         let response =
-            response.map_err(|_| RuntimeError::Code(ErrorCode::RateLimitsUnavailable))?;
+            response.map_err(|error| RuntimeError::Code(classify_rate_limits_error(&error)))?;
         let auth_refresh_observed = pending_before || inner.pending_auth_refresh_observed;
         inner.pending_auth_refresh_observed = false;
         Ok(RateLimitsResult::from_snapshot(
@@ -373,6 +373,26 @@ impl RuntimeController {
         inner.authenticated = false;
         inner.pending_auth_refresh_observed = false;
         shutdown_result.map_err(|_| RuntimeError::Code(ErrorCode::RuntimeUnavailable))
+    }
+}
+
+/// Reduce a typed rate-limit failure to a stable, non-secret boundary code.
+/// Only the transport kind or JSON-RPC numeric code is inspected; provider
+/// messages and JSON-RPC data never cross this boundary.
+fn classify_rate_limits_error(error: &TypedRequestError) -> ErrorCode {
+    match error {
+        TypedRequestError::Transport { source, .. }
+            if source.kind() == std::io::ErrorKind::TimedOut =>
+        {
+            ErrorCode::RateLimitsTimeout
+        }
+        TypedRequestError::Transport { .. } => ErrorCode::RateLimitsTransport,
+        TypedRequestError::Server { source, .. } => match source.code {
+            -32600 => ErrorCode::RateLimitsAuthRequired,
+            -32603 => ErrorCode::RateLimitsBackend,
+            _ => ErrorCode::RateLimitsServer,
+        },
+        TypedRequestError::Deserialize { .. } => ErrorCode::RateLimitsDeserialize,
     }
 }
 
@@ -747,6 +767,74 @@ mod tests {
                 data: Some(serde_json::json!({ "usageRingCategory": category })),
                 message: "device login start failed: https://secret".to_string(),
             },
+        }
+    }
+
+    fn rate_limit_server_error(code: i64) -> TypedRequestError {
+        TypedRequestError::Server {
+            method: "account/rateLimits/read".to_string(),
+            source: codex_app_server_protocol::JSONRPCErrorError {
+                code,
+                data: Some(serde_json::json!({
+                    "usageRingCategory": "secret-category",
+                    "token": "secret-token"
+                })),
+                message: "server rejected secret account at https://secret.example".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn rate_limit_error_classifier_uses_only_closed_non_secret_codes() {
+        let deserialize = TypedRequestError::Deserialize {
+            method: "account/rateLimits/read".to_string(),
+            source: serde_json::from_str::<GetAccountRateLimitsResponse>("{secret-json}")
+                .unwrap_err(),
+        };
+        let cases = [
+            (
+                transport_error(
+                    std::io::ErrorKind::TimedOut,
+                    "timeout for token=secret at https://secret.example",
+                ),
+                ErrorCode::RateLimitsTimeout,
+                "RATE_LIMITS_TIMEOUT",
+            ),
+            (
+                transport_error(
+                    std::io::ErrorKind::Other,
+                    "timeout-like secret text must not affect classification",
+                ),
+                ErrorCode::RateLimitsTransport,
+                "RATE_LIMITS_TRANSPORT",
+            ),
+            (
+                rate_limit_server_error(-32600),
+                ErrorCode::RateLimitsAuthRequired,
+                "RATE_LIMITS_AUTH_REQUIRED",
+            ),
+            (
+                rate_limit_server_error(-32603),
+                ErrorCode::RateLimitsBackend,
+                "RATE_LIMITS_BACKEND",
+            ),
+            (
+                rate_limit_server_error(-32000),
+                ErrorCode::RateLimitsServer,
+                "RATE_LIMITS_SERVER",
+            ),
+            (
+                deserialize,
+                ErrorCode::RateLimitsDeserialize,
+                "RATE_LIMITS_DESERIALIZE",
+            ),
+        ];
+
+        for (error, expected, wire_name) in cases {
+            let actual = classify_rate_limits_error(&error);
+            assert_eq!(actual, expected);
+            assert_eq!(actual.as_str(), wire_name);
+            assert!(!actual.to_string().to_ascii_lowercase().contains("secret"));
         }
     }
 
