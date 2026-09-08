@@ -22,7 +22,7 @@ Codex repository commit and has a separate Apache-2.0 notice in
   `rustls_platform_verifier::android::init_with_env` with the application
   Context before creating the client. This Rust patch introduces no transport
   verification bypass. The Android application separately permits cleartext
-  only to the exact public CRL distribution host `c.pki.goog`; its scope and
+  only to exact `c.pki.goog` and the `c.lencr.org` CRL issuer namespace; scope and
   fail-closed review rule are documented in
   [`docs/THREAT_MODEL.md`](../../docs/THREAT_MODEL.md).
 * Upstream `src/async_impl/client.rs` SHA-256:

@@ -109,6 +109,8 @@ confirmed the exact six-method JNI surface, disabled telemetry, plugin, MCP,
 and shell capabilities, the exact `c.pki.goog` cleartext CRL exception with an
 unrelated host denied, and that explicit caller-forced auth refresh is not
 exposed through JNI.
+The 2026-09-08 follow-up extends the CRL-only policy to the reviewed
+`c.lencr.org` issuer namespace; see [device follow-up](DEVICE_FOLLOWUP_2026-09-08.md).
 
 In the pinned `rust-v0.148.0` source, regular managed ChatGPT auth calls the
 internal proactive-refresh path from `AuthManager::auth()`. A parseable access

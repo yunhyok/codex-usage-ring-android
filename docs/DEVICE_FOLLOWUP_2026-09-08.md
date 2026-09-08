@@ -53,3 +53,30 @@ repository, 25-read, and release acceptance tests.
 ```text
 adb shell am instrument -w -e usageRingNativeDiagnostic true -e class io.github.yunhyok.usagering.NativeConnectivityDeviceTest#ordinaryNativeReadReportsSanitizedFailure io.github.yunhyok.usagering.test/androidx.test.runner.AndroidJUnitRunner
 ```
+## Live TLS recovery
+
+The narrowed native diagnostic reported `RATE_LIMITS_TRANSPORT`. A temporary,
+unauthenticated instrumentation probe against public `https://chatgpt.com/`
+then passed DNS and Android HTTPS trust, but failed the vendored verifier's
+secondary PKIX revocation check with `UNDETERMINED_REVOCATION_STATUS`.
+The public leaf used a Let's Encrypt CRL and omitted OCSP. Direct CRL access
+was denied by Android's cleartext policy, which allowed only `c.pki.goog`.
+No raw error, certificate, account value, or credential was exported.
+
+The application now also permits `c.lencr.org` and its issuer subdomains,
+the [official Let's Encrypt CRL namespace](https://letsencrypt.org/docs/lencr.org/).
+The verifier's bytes, system trust, certificate/hostname validation, and
+revocation options are unchanged. Static and physical policy tests assert the
+exact two reviewed namespaces and deny API/auth hosts, the `lencr.org` parent,
+other Let's Encrypt services, Google subdomains, and unrelated hosts.
+
+A local nativeRelease prototype containing this policy change passed the same
+public TLS/PKIX probe, one ordinary native usage read, and six repository,
+policy, widget, and scheduler tests, plus 25 consecutive ordinary repository
+refreshes. The 37 native JVM unit tests and lint also passed. Its update was signature-compatible and
+data-preserving. These local results are separate from exact CI release proof;
+natural token-refresh observation is still pending.
+Sanitized records are in `app/build/reports/native-followup-http-20260908/`
+(`public-crl-policy.json`, `crl-prototype-transport.json`,
+`crl-prototype-native-read.json`, `crl-prototype-functional.json`,
+`crl-prototype-25-reads.json`).

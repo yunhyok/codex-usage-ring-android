@@ -5,8 +5,11 @@ contrast and refresh-path defects. The subsequent
 [physical-device follow-up](DEVICE_FOLLOWUP_2026-09-08.md) confirms a
 signature-compatible update of the exact main CI nativeRelease payload,
 five structural checks, and actual Samsung launcher resizing to 1×1.
-The ordinary authenticated usage read still failed. The table below retains
-historical evidence; live recovery and natural-refresh proof remain pending.
+The original CI payload failed its authenticated usage read. The follow-up
+identified a blocked Let's Encrypt CRL fetch; the reviewed domain-policy fix
+restored TLS/PKIX and ordinary usage reads on the local nativeRelease candidate.
+The table below retains historical evidence; exact CI recovery proof and
+natural token-refresh observation remain pending.
 Release readiness remains false.
 This file is a release record, not a blanket assurance. An item is **pass**
 only when its command output and, where applicable, its evidence file are

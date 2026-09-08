@@ -7,5 +7,7 @@
     </base-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">c.pki.goog</domain>
+        <!-- Public, signed CRLs for rotating Let's Encrypt issuers. -->
+        <domain includeSubdomains="true">c.lencr.org</domain>
     </domain-config>
 </network-security-config>

@@ -49,18 +49,21 @@ blocker.
 The application keeps `android:usesCleartextTraffic="false"`, trusts only the
 Android system certificate store, and does not disable certificate or hostname
 verification. Its [Network Security Configuration](https://developer.android.com/privacy-and-security/security-config)
-contains one exact-domain exception: cleartext is permitted for
-`c.pki.goog` with `includeSubdomains="false"`. This is limited to the public
-CA certificate-revocation-list distribution request made by Android's platform
-verifier; the Codex authentication and API connections remain HTTPS.
+permits cleartext only for the reviewed public CRL namespaces: exact
+`c.pki.goog` and `c.lencr.org` with its issuer subdomains. Let's Encrypt
+[documents `c.lencr.org` as its CRL namespace](https://letsencrypt.org/docs/lencr.org/).
+The API 36 device rejected a live Let's Encrypt CRL fetch before that namespace
+was allowed. The exception enables Android's signed certificate-revocation-list
+checks; Codex authentication and API connections remain HTTPS. The parent
+`lencr.org`, its other services, and unrelated hosts remain cleartext-denied.
 
 This narrow exception addresses the Android CRL-fetch behavior documented by
 the platform-verifier maintainers in
 [rustls-platform-verifier PR #179](https://github.com/rustls/rustls-platform-verifier/pull/179).
-There is no wildcard, user/raw trust anchor, debug override, private CA, or
-webpki fallback. If the live certificate's CRL distribution host changes,
-login must fail closed until the new chain and exact host are reviewed and the
-physical TLS/login gate is repeated.
+There is no global cleartext permission, user/raw trust anchor, debug override, private CA, or
+webpki fallback. A new CRL namespace must be reviewed and the physical TLS/login
+gate repeated before release acceptance. Revocation network failures retain
+the platform checker's existing SOFT_FAIL semantics.
 
 The verifier implementation is vendored and source-visible under
 `../third_party/rustls-platform-verifier-android/` from rustls-platform-verifier
