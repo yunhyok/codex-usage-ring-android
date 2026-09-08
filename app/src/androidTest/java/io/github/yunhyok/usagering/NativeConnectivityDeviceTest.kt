@@ -62,7 +62,9 @@ class NativeConnectivityDeviceTest {
         val allowed = setOf(
             "RATE_LIMITS_AUTH_REQUIRED", "RATE_LIMITS_BACKEND", "RATE_LIMITS_SERVER",
             "RATE_LIMITS_TRANSPORT", "RATE_LIMITS_TIMEOUT", "RATE_LIMITS_DESERIALIZE",
-            "RATE_LIMITS_UNAVAILABLE", "NOT_READY", "RUNTIME_UNAVAILABLE", "LOGIN_IN_PROGRESS",
+            "RATE_LIMITS_UNAVAILABLE", "RATE_LIMITS_HTTP_401", "RATE_LIMITS_HTTP_403",
+            "RATE_LIMITS_HTTP_429", "RATE_LIMITS_HTTP_4XX", "RATE_LIMITS_HTTP_5XX", "RATE_LIMITS_EMPTY",
+            "NOT_READY", "RUNTIME_UNAVAILABLE", "LOGIN_IN_PROGRESS",
         )
         val category = result.exceptionOrNull()?.message?.takeIf { it in allowed }
             ?: "UNCLASSIFIED_NATIVE_ERROR"

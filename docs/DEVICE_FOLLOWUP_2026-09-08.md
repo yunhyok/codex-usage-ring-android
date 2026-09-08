@@ -35,12 +35,14 @@ widget options.
 This is partial device evidence. `release_ready` remains false. Fresh login,
 logout/relogin, network toggling, reboot, target uninstall, and natural-refresh
 expiry checks were not performed in this data-preserving follow-up.
+
 ## Narrow failure diagnostic
 
 The follow-up change preserves typed failures as fixed `RATE_LIMITS_*` codes
 instead of collapsing all failures. It changes neither auth acquisition nor
-request/retry behavior. Server messages, response bodies, tokens, and account
-identifiers are not examined or emitted by the classifier.
+request/retry behavior. The first local diagnostic reported `RATE_LIMITS_BACKEND`.
+A narrower classification recognizes only the pinned error prefix/header;
+response bodies are ignored and no raw error, URL, token, or account identifier is emitted.
 
 Run the opt-in check only on the native candidate with its matching signed
 instrumentation APK. It calls native `start()` and one ordinary
