@@ -16,16 +16,18 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class NativePolicyDeviceTest {
     @Test
-    fun runtimeNetworkSecurityPolicyAllowsOnlyTheCrlDistributionHost() {
+    fun runtimeNetworkSecurityPolicyAllowsOnlyTheCrlDistributionHosts() {
         val policy = NetworkSecurityPolicy.getInstance()
         assertTrue(
             "c.pki.goog must retain the narrowly scoped CRL cleartext exception",
             policy.isCleartextTrafficPermitted("c.pki.goog"),
         )
-        assertFalse(
-            "an unrelated host must remain cleartext-denied",
-            policy.isCleartextTrafficPermitted("example.com"),
-        )
+        for (host in listOf("c.lencr.org", "e8.c.lencr.org", "r11.c.lencr.org")) {
+            assertTrue("Let's Encrypt CRL issuers must be reachable", policy.isCleartextTrafficPermitted(host))
+        }
+        for (host in listOf("example.com", "chatgpt.com", "auth.openai.com", "lencr.org", "o.lencr.org", "sub.c.pki.goog")) {
+            assertFalse("non-CRL hosts must remain cleartext-denied", policy.isCleartextTrafficPermitted(host))
+        }
     }
 
     @Test

@@ -28,7 +28,7 @@ class NetworkSecurityConfigTest {
     }
 
     @Test
-    fun networkConfigHasOnlyTheCrlDistributionHostCleartextException() {
+    fun networkConfigHasOnlyTheCrlDistributionHostsCleartextException() {
         val config = parse("app/src/main/res/xml/network_security_config.xml", "src/main/res/xml/network_security_config.xml")
         assertEquals("network-security-config", config.documentElement.tagName)
         assertTrue("global cleartext policy must remain implicit", !config.documentElement.hasAttribute("cleartextTrafficPermitted"))
@@ -50,11 +50,14 @@ class NetworkSecurityConfigTest {
         assertEquals("true", domainConfig.getAttribute("cleartextTrafficPermitted"))
 
         val domains = config.getElementsByTagName("domain")
-        assertEquals("no domains other than c.pki.goog may be allowlisted", 1, domains.length)
-        val domain = domains.item(0) as Element
-        assertEquals("c.pki.goog", domain.textContent.trim())
-        assertEquals("false", domain.getAttribute("includeSubdomains"))
-        assertTrue("the exception must be scoped to the one domain-config", domainConfig.isSameNode(domain.parentNode))
+        assertEquals("only the two reviewed CRL namespaces may be allowlisted", 2, domains.length)
+        val expected = mapOf("c.pki.goog" to "false", "c.lencr.org" to "true")
+        val actual = (0 until domains.length).associate { index ->
+            val domain = domains.item(index) as Element
+            assertTrue("exceptions must stay inside the one domain-config", domainConfig.isSameNode(domain.parentNode))
+            domain.textContent.trim() to domain.getAttribute("includeSubdomains")
+        }
+        assertEquals(expected, actual)
     }
 
     @Test

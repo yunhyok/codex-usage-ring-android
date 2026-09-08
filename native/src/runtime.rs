@@ -296,7 +296,7 @@ impl RuntimeController {
             inner.pending_auth_refresh_observed = true;
         }
         let response =
-            response.map_err(|_| RuntimeError::Code(ErrorCode::RateLimitsUnavailable))?;
+            response.map_err(|error| RuntimeError::Code(classify_rate_limits_error(&error)))?;
         let auth_refresh_observed = pending_before || inner.pending_auth_refresh_observed;
         inner.pending_auth_refresh_observed = false;
         Ok(RateLimitsResult::from_snapshot(
@@ -373,6 +373,65 @@ impl RuntimeController {
         inner.authenticated = false;
         inner.pending_auth_refresh_observed = false;
         shutdown_result.map_err(|_| RuntimeError::Code(ErrorCode::RuntimeUnavailable))
+    }
+}
+
+/// Reduce a typed rate-limit failure to a stable, non-secret boundary code.
+/// The pinned backend loses HTTP status types, so its fixed header is parsed
+/// only after an internal-error code. Raw messages/data never cross JNI.
+fn classify_rate_limits_error(error: &TypedRequestError) -> ErrorCode {
+    match error {
+        TypedRequestError::Transport { source, .. }
+            if source.kind() == std::io::ErrorKind::TimedOut =>
+        {
+            ErrorCode::RateLimitsTimeout
+        }
+        TypedRequestError::Transport { .. } => ErrorCode::RateLimitsTransport,
+        TypedRequestError::Server { source, .. } => match source.code {
+            -32600 => ErrorCode::RateLimitsAuthRequired,
+            -32603 => classify_rate_limits_backend_error(&source.message),
+            _ => ErrorCode::RateLimitsServer,
+        },
+        TypedRequestError::Deserialize { .. } => ErrorCode::RateLimitsDeserialize,
+    }
+}
+
+/// The pinned backend formats HTTP failures with this header. Discard its
+/// content type/body before reading status digits; unknown formats stay generic.
+fn classify_rate_limits_backend_error(message: &str) -> ErrorCode {
+    let Some(detail) = message.strip_prefix("failed to fetch codex rate limits: ") else {
+        return ErrorCode::RateLimitsBackend;
+    };
+    if detail == "no snapshots returned" {
+        return ErrorCode::RateLimitsEmpty;
+    }
+    if detail.starts_with("Decode error for ") {
+        return ErrorCode::RateLimitsDeserialize;
+    }
+    if detail.starts_with("error sending request for url (") {
+        return ErrorCode::RateLimitsTransport;
+    }
+    let Some((header, _)) = detail.split_once("; content-type=") else {
+        return ErrorCode::RateLimitsBackend;
+    };
+    let Some((url, status)) = header
+        .strip_prefix("GET ")
+        .and_then(|s| s.rsplit_once(" failed: "))
+    else {
+        return ErrorCode::RateLimitsBackend;
+    };
+    if !(url.starts_with("https://") || url.starts_with("http://"))
+        || status.as_bytes().get(3) != Some(&b' ')
+    {
+        return ErrorCode::RateLimitsBackend;
+    }
+    match status.get(..3).and_then(|s| s.parse::<u16>().ok()) {
+        Some(401) => ErrorCode::RateLimitsHttp401,
+        Some(403) => ErrorCode::RateLimitsHttp403,
+        Some(429) => ErrorCode::RateLimitsHttp429,
+        Some(400..=499) => ErrorCode::RateLimitsHttp4xx,
+        Some(500..=599) => ErrorCode::RateLimitsHttp5xx,
+        _ => ErrorCode::RateLimitsBackend,
     }
 }
 
@@ -748,6 +807,119 @@ mod tests {
                 message: "device login start failed: https://secret".to_string(),
             },
         }
+    }
+
+    fn rate_limit_server_error(code: i64) -> TypedRequestError {
+        TypedRequestError::Server {
+            method: "account/rateLimits/read".to_string(),
+            source: codex_app_server_protocol::JSONRPCErrorError {
+                code,
+                data: Some(serde_json::json!({
+                    "usageRingCategory": "secret-category",
+                    "token": "secret-token"
+                })),
+                message: "server rejected secret account at https://secret.example".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn rate_limit_error_classifier_uses_only_closed_non_secret_codes() {
+        let deserialize = TypedRequestError::Deserialize {
+            method: "account/rateLimits/read".to_string(),
+            source: serde_json::from_str::<GetAccountRateLimitsResponse>("{secret-json}")
+                .unwrap_err(),
+        };
+        let cases = [
+            (
+                transport_error(
+                    std::io::ErrorKind::TimedOut,
+                    "timeout for token=secret at https://secret.example",
+                ),
+                ErrorCode::RateLimitsTimeout,
+                "RATE_LIMITS_TIMEOUT",
+            ),
+            (
+                transport_error(
+                    std::io::ErrorKind::Other,
+                    "timeout-like secret text must not affect classification",
+                ),
+                ErrorCode::RateLimitsTransport,
+                "RATE_LIMITS_TRANSPORT",
+            ),
+            (
+                rate_limit_server_error(-32600),
+                ErrorCode::RateLimitsAuthRequired,
+                "RATE_LIMITS_AUTH_REQUIRED",
+            ),
+            (
+                rate_limit_server_error(-32603),
+                ErrorCode::RateLimitsBackend,
+                "RATE_LIMITS_BACKEND",
+            ),
+            (
+                rate_limit_server_error(-32000),
+                ErrorCode::RateLimitsServer,
+                "RATE_LIMITS_SERVER",
+            ),
+            (
+                deserialize,
+                ErrorCode::RateLimitsDeserialize,
+                "RATE_LIMITS_DESERIALIZE",
+            ),
+        ];
+
+        for (error, expected, wire_name) in cases {
+            let actual = classify_rate_limits_error(&error);
+            assert_eq!(actual, expected);
+            assert_eq!(actual.as_str(), wire_name);
+            assert!(!actual.to_string().to_ascii_lowercase().contains("secret"));
+        }
+    }
+
+    #[test]
+    fn rate_limit_backend_header_ignores_body_and_unknown_formats() {
+        for (status, expected) in [
+            ("401 Unauthorized", ErrorCode::RateLimitsHttp401),
+            ("403 Forbidden", ErrorCode::RateLimitsHttp403),
+            ("429 Too Many Requests", ErrorCode::RateLimitsHttp429),
+            ("404 Not Found", ErrorCode::RateLimitsHttp4xx),
+            ("503 Service Unavailable", ErrorCode::RateLimitsHttp5xx),
+            ("401secret", ErrorCode::RateLimitsBackend),
+        ] {
+            let message = format!(
+                "failed to fetch codex rate limits: GET https://secret.example/usage failed: {status}; content-type=text/plain; body=secret failed: 401 Unauthorized; content-type=secret"
+            );
+            assert_eq!(classify_rate_limits_backend_error(&message), expected);
+        }
+        for (detail, expected) in [
+            ("no snapshots returned", ErrorCode::RateLimitsEmpty),
+            (
+                "Decode error for https://secret.example: secret body",
+                ErrorCode::RateLimitsDeserialize,
+            ),
+            (
+                "error sending request for url (https://secret.example)",
+                ErrorCode::RateLimitsTransport,
+            ),
+            (
+                "unknown body=GET https://secret.example failed: 401 Unauthorized; content-type=secret",
+                ErrorCode::RateLimitsBackend,
+            ),
+            (
+                "GET https://secret.example failed: 401 Unauthorized",
+                ErrorCode::RateLimitsBackend,
+            ),
+        ] {
+            let message = format!("failed to fetch codex rate limits: {detail}");
+            assert_eq!(classify_rate_limits_backend_error(&message), expected);
+        }
+        assert_eq!(
+            classify_rate_limits_backend_error(
+                "GET https://secret.example failed: 401 Unauthorized; content-type=secret"
+            ),
+            ErrorCode::RateLimitsBackend
+        );
     }
 
     #[test]
