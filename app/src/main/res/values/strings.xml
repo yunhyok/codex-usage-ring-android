@@ -9,7 +9,7 @@
     <string name="error">Refresh error</string>
     <string name="login">Device-code login</string>
     <string name="login_device_code_description">Sign in with the official ChatGPT device-code flow. Usage Ring shows only the approval URL and one-time code; credentials and OAuth tokens never cross into the Android UI.</string>
-    <string name="permission_description">Allow notifications to receive a quiet status update every 30 minutes.</string>
+    <string name="permission_description">Allow notifications for quiet usage status updates.</string>
     <string name="enable_updates">Enable updates</string>
     <string name="notification_channel_name">Usage status</string>
     <string name="notification_title">Codex usage</string>
@@ -26,7 +26,10 @@
     <string name="fetched_at">Fetched %1$s (%2$d min ago)</string>
     <string name="refresh_now">Refresh now</string>
     <string name="add_widget">Add home-screen widget</string>
-    <string name="refresh_interval">Refresh interval: %1$d min</string>
+    <string name="refresh_interval">Refresh interval: %1$s</string>
+    <string name="refresh_interval_description">Adaptive: shorten refreshes when usage changes (10 → 5 → 3 → 1 min) and grow them when unchanged, up to 10 min. Android power management may delay scheduled refreshes.</string>
+    <string name="refresh_interval_adaptive">Adaptive</string>
+    <string name="refresh_interval_minutes">%1$d min</string>
     <string name="notifications_toggle">Notifications enabled</string>
     <string name="native_gate_unavailable">Live Codex login is unavailable until the Android native gate passes.</string>
     <string name="privacy_summary">Privacy: usage values stay on-device; no telemetry, ads, or remote relay.</string>

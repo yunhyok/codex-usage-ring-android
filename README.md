@@ -23,6 +23,10 @@ The widget now defaults to one home-screen cell, supports horizontal and vertica
 resizing, and uses a bright green indicator. See the [2026-09-08 code review](docs/CODE_REVIEW_2026-09-08.md)
 for refresh-path fixes, automated checks and the still-pending live-device evidence.
 
+Refresh defaults to adaptive 10/5/3/1 minute delays based on usage changes, with
+fixed 3/5/10/15/30 minute choices. Android power management can delay execution.
+See [refresh interval behavior](docs/REFRESH_INTERVALS.md).
+
 This repository is pre-release. The target milestone is `v0.1.0` (GitHub
 pre-release). A release is blocked until the native Rust gate and physical
 Android-device evidence are present and independently reviewed. The current

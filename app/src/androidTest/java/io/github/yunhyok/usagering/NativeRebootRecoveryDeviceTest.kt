@@ -11,6 +11,7 @@ import io.github.yunhyok.usagering.app.AppGraph
 import io.github.yunhyok.usagering.domain.UsageSnapshot
 import io.github.yunhyok.usagering.domain.UsageWindowData
 import io.github.yunhyok.usagering.widget.UsageRingWidgetReceiver
+import io.github.yunhyok.usagering.worker.UsageWorkScheduler
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
@@ -37,7 +38,7 @@ class NativeRebootRecoveryDeviceTest {
         assertWindowValues(snapshot.sevenDay)
 
         val workInfos = WorkManager.getInstance(targetContext)
-            .getWorkInfosForUniqueWork("codex_usage_ring_refresh")
+            .getWorkInfosForUniqueWork(UsageWorkScheduler.UNIQUE_NAME)
             .get(10, TimeUnit.SECONDS)
         val activeWork = workInfos.filter { !it.state.isFinished }
         assertTrue("exactly one active refresh work must exist", activeWork.size == 1)

@@ -11,6 +11,15 @@ restored TLS/PKIX and ordinary usage reads on the local nativeRelease candidate.
 The table below retains historical evidence; exact CI recovery proof and
 natural token-refresh observation remain pending.
 Release readiness remains false.
+
+The 2026-09-12 reconnect verified that the previously tested signed APK was
+still installed. Its cached snapshot was non-error and less than one hour old;
+an ordinary authenticated read, widget binding/resize metadata and scheduled-work
+check passed (3 tests). No natural auth-refresh marker was observed. A prospective
+baseline was captured privately through the marker API; natural refresh remains
+pending. The subsequent [adaptive interval change](REFRESH_INTERVALS.md) does not
+turn those earlier physical results into proof for a new payload.
+
 This file is a release record, not a blanket assurance. An item is **pass**
 only when its command output and, where applicable, its evidence file are
 attached to the release review. Until then it remains **not run** or **blocked**.
