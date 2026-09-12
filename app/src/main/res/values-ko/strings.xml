@@ -9,7 +9,7 @@
     <string name="error">새로 고침 오류</string>
     <string name="login">디바이스 코드 로그인</string>
     <string name="login_device_code_description">공식 ChatGPT 기기 코드 방식으로 로그인합니다. Usage Ring은 승인 URL과 일회용 코드만 표시하며 자격 증명과 OAuth 토큰은 Android UI 경계를 통과하지 않습니다.</string>
-    <string name="permission_description">30분마다 조용한 상태 알림을 받으려면 알림을 허용하세요.</string>
+    <string name="permission_description">조용한 사용량 상태 알림을 받으려면 알림을 허용하세요.</string>
     <string name="enable_updates">업데이트 활성화</string>
     <string name="notification_channel_name">사용량 상태</string>
     <string name="notification_title">Codex 사용량</string>
@@ -26,7 +26,10 @@
     <string name="fetched_at">가져온 시각 %1$s (%2$d분 전)</string>
     <string name="refresh_now">지금 새로 고침</string>
     <string name="add_widget">홈 화면 위젯 추가</string>
-    <string name="refresh_interval">새로 고침 간격: %1$d분</string>
+    <string name="refresh_interval">새로 고침 간격: %1$s</string>
+    <string name="refresh_interval_description">적응형: 사용량이 변하면 새로 고침 간격을 10분 → 5분 → 3분 → 1분으로 줄이고, 변하지 않으면 최대 10분까지 늘립니다. Android 전원 관리로 예약된 새로 고침이 지연될 수 있습니다.</string>
+    <string name="refresh_interval_adaptive">적응형</string>
+    <string name="refresh_interval_minutes">%1$d분</string>
     <string name="notifications_toggle">알림 사용</string>
     <string name="native_gate_unavailable">Android 네이티브 게이트를 통과하기 전에는 Codex 실로그인을 사용할 수 없습니다.</string>
     <string name="privacy_summary">개인정보: 사용량 값은 기기에만 보관하며 텔레메트리, 광고, 원격 릴레이를 사용하지 않습니다.</string>

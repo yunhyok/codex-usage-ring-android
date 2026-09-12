@@ -14,7 +14,7 @@ class UsageBootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 if (UsageWorkScheduler.bootRestoreEnabled(context)) {
-                    UsageWorkScheduler.schedule(context, UsageWorkScheduler.savedInterval(context))
+                    UsageWorkScheduler.schedule(context)
                 }
             } finally {
                 pending.finish()

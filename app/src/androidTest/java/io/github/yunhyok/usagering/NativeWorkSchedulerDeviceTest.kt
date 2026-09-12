@@ -22,10 +22,12 @@ class NativeWorkSchedulerDeviceTest {
         assertTrue("boot restore must be enabled", bootRestoreEnabled)
 
         val workInfos = WorkManager.getInstance(targetContext)
-            .getWorkInfosForUniqueWork("codex_usage_ring_refresh")
+            .getWorkInfosForUniqueWork(UsageWorkScheduler.UNIQUE_NAME)
             .get(10, TimeUnit.SECONDS)
         val activeWork = workInfos.filter { !it.state.isFinished }
         assertTrue("exactly one active refresh work must exist", activeWork.size == 1)
+        assertTrue("old periodic refresh work must be retired", WorkManager.getInstance(targetContext)
+            .getWorkInfosForUniqueWork("codex_usage_ring_refresh").get(10, TimeUnit.SECONDS).none { !it.state.isFinished })
 
         val state = activeWork.single().state
         assertTrue(

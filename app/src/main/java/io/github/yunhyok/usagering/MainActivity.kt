@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             UsageWorkScheduler.setNotificationsEnabled(this@MainActivity, granted)
             if (granted) {
-                UsageWorkScheduler.schedule(this@MainActivity, UsageWorkScheduler.savedInterval(this@MainActivity))
+                UsageWorkScheduler.schedule(this@MainActivity)
             }
         }
     }
@@ -87,7 +88,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) { AppGraph.initialize(this@MainActivity) }
         lifecycleScope.launch {
             UsageWorkScheduler.setBootRestoreEnabled(this@MainActivity, true)
-            UsageWorkScheduler.schedule(this@MainActivity, UsageWorkScheduler.savedInterval(this@MainActivity))
+            UsageWorkScheduler.schedule(this@MainActivity)
         }
         setContent { UsageRingTheme { UsageRingApp(onEnableUpdates = ::enableUpdates) } }
     }
@@ -100,7 +101,7 @@ class MainActivity : ComponentActivity() {
         } else {
             lifecycleScope.launch {
                 UsageWorkScheduler.setNotificationsEnabled(this@MainActivity, true)
-                UsageWorkScheduler.schedule(this@MainActivity, UsageWorkScheduler.savedInterval(this@MainActivity))
+                UsageWorkScheduler.schedule(this@MainActivity)
             }
         }
     }
@@ -224,7 +225,7 @@ private fun Settings(
     val context = LocalContext.current
     val mockRepository = if (BuildConfig.FLAVOR == "mock") AppGraph.mockRepository(context) else null
     val scope = rememberCoroutineScope()
-    var interval by remember { mutableStateOf(UsageWorkScheduler.RefreshInterval.THIRTY) }
+    var interval by remember { mutableStateOf(UsageWorkScheduler.RefreshInterval.ADAPTIVE) }
     var notifications by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         interval = UsageWorkScheduler.savedInterval(context)
@@ -299,10 +300,34 @@ private fun Settings(
         Button(onClick = onEnableUpdates) { Text(stringResource(R.string.enable_updates)) }
         Button(onClick = onRefresh) { Text(stringResource(R.string.refresh_now)) }
         Button(onClick = { requestPinWidget(context) }) { Text(stringResource(R.string.add_widget)) }
-        Text(stringResource(R.string.refresh_interval, interval.minutes), style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            UsageWorkScheduler.RefreshInterval.entries.forEach { choice ->
-                Button(onClick = { interval = choice; scope.launch { UsageWorkScheduler.setInterval(context, choice) } }) { Text("${choice.minutes}m") }
+        Text(stringResource(R.string.refresh_interval, refreshIntervalLabel(interval)), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.refresh_interval_description), style = MaterialTheme.typography.bodySmall)
+        Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            UsageWorkScheduler.RefreshInterval.entries.chunked(3).forEach { choices ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    choices.forEach { choice ->
+                        val isSelected = interval == choice
+                        Button(
+                            modifier = Modifier.weight(1f).semantics { selected = isSelected },
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
+                            ),
+                            onClick = {
+                                interval = choice
+                                scope.launch { UsageWorkScheduler.setInterval(context, choice) }
+                            },
+                        ) {
+                            Text(refreshIntervalLabel(choice))
+                        }
+                    }
+                }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -328,6 +353,14 @@ private fun Settings(
         }
     }
 }
+
+@androidx.compose.runtime.Composable
+private fun refreshIntervalLabel(interval: UsageWorkScheduler.RefreshInterval): String =
+    if (interval == UsageWorkScheduler.RefreshInterval.ADAPTIVE) {
+        stringResource(R.string.refresh_interval_adaptive)
+    } else {
+        stringResource(R.string.refresh_interval_minutes, interval.minutes)
+    }
 
 private fun requestPinWidget(context: Context) {
     if (Build.VERSION.SDK_INT < 26) return
