@@ -5,8 +5,10 @@
  *
  * MODIFIED in this project: when no stapled OCSP response is supplied, the
  * PKIX checker also uses PREFER_CRLS. SOFT_FAIL and ONLY_END_ENTITY remain;
- * The OCSP/CRL fallback behavior remains enabled. The Android system
- * TrustManager and upstream verification flow are otherwise retained.
+ * The OCSP/CRL fallback behavior remains enabled. The production TrustManager
+ * uses the application's Network Security Configuration; AndroidCAStore is
+ * retained only for revocation bookkeeping. The root collision scan advances
+ * past deleted or malformed anchors.
  */
 package org.rustls.platformverifier
 
@@ -148,7 +150,7 @@ internal object CertificateVerifier {
         val rootCAs = mutableListOf<X509Certificate>()
 
         val factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-        factory.init(systemKeystore)
+        factory.init(null as KeyStore?)
 
         val availableTrustManagers = try {
             factory.trustManagers
@@ -179,14 +181,16 @@ internal object CertificateVerifier {
 
     @get:Synchronized
     private val systemKeystore: KeyStore? = try {
-        KeyStore.getInstance("AndroidCAStore")
+        KeyStore.getInstance("AndroidCAStore").apply { load(null) }
     } catch (_: KeyStoreException) {
         null
     }
 
     @get:Synchronized
     private val systemTrustManager: Lazy<X509TrustManagerExtensions?> =
-        makeLazyTrustManager(systemKeystore)
+        // A non-null AndroidCAStore includes user CAs and bypasses the app's
+        // Network Security Configuration. Null selects its system-only policy.
+        makeLazyTrustManager(null)
 
     @JvmStatic
     private fun verifyCertificateChain(
