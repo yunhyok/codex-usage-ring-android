@@ -37,8 +37,12 @@ working tree that has not passed the hard native gate.
       certificate for both copies, record the two resulting SHA-256 values and
       the certificate SHA-256, set `release_payload_derivation:
       apksigner-sign-only`, and mark both `native_release_install` and
-      `native_release_instrumentation` as `pass`. Do not create or use the
-      production release keystore locally. A disposable test keystore may exist
+      `native_release_instrumentation` as `pass`. Production APK signing must
+      run only in the GitHub release workflow. The owner authorized a one-time
+      local key bootstrap, encrypted backup and GitHub registration outside
+      the repository and OneDrive on 2026-09-20; see the
+      [certificate review](SIGNING_REVIEW_2026-09-20.md). Do not create a new
+      production key or use it for local APK tests. A disposable test keystore may exist
       outside the repository only for this review; never derive it from, treat
       it as, commit, upload, or retain it as production signing material. Delete
       it and the signed test copies after review.
@@ -79,7 +83,10 @@ true:
    never creates a key and deletes the materialized keystore immediately after
    signing.
 5. The APK is signed, verifiable, and its `apksigner --print-certs` SHA-256
-   matches the independently reviewed pinned signing policy.
+   matches the pinned signing policy. Certificate approval requires explicit
+   owner approval, independent AI technical review, and coordinator
+   verification recorded with the public certificate. The owner approved this
+   replacement for the former two-person rule on 2026-09-20.
 6. The exact candidate SBOM contains an explicit rustls platform-verifier
    component. Both the signed-APK SPDX SBOM and the source-tree/lockfile SPDX
    SBOM (covering `native/Cargo.lock`) are uploaded, along with the candidate

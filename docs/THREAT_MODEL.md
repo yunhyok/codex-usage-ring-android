@@ -14,7 +14,7 @@ backend, telemetry service, or account system.
 | Usage values and timestamps | Disclosure through logs, backups, or a debug build | Keep values on-device; avoid verbose logs; inspect release manifest and APK; do not distribute `debug` APKs |
 | Android widget state | Malicious or stale exported component | Keep components non-exported unless required; use explicit intents and validate inputs |
 | Native Rust boundary | Memory-safety or malformed-input crash | Rust safe defaults; `fmt`, `clippy`, tests, and the native gate in CI; fuzzing is future work |
-| Build/signing credentials | Credential theft or supply-chain compromise | GitHub environment secrets only; no key generation or secret files in the repo; least-privilege workflow permissions |
+| Build/signing credentials | Credential theft or supply-chain compromise | CI signing uses tag-restricted GitHub environment secrets; owner-authorized encrypted local key/backup outside the repo and OneDrive; no secret files in Git; least-privilege workflow permissions; see the [certificate review](SIGNING_REVIEW_2026-09-20.md) |
 | Dependency graph | Vulnerable or compromised dependency | Dependency review and lockfiles; review updates before merge; SBOM on release |
 | User privacy | Accidental network/identifier/permission collection | Review merged manifest and APK; expected permissions are documented; any expansion needs a threat-model update |
 

@@ -1,6 +1,6 @@
 {
-  "status": "pending",
-  "sha256": "",
+  "status": "approved",
+  "sha256": "e854068152eb91ff0589ac4962d56118854b3d797e553b35523ecd006c75ff05",
   "algorithm": "SHA-256",
-  "review": "Two-person review of the release certificate is required before changing status to approved."
+  "review": "Owner approval, independent AI technical review, and coordinator verification completed on 2026-09-20. This replaces the previous two-person requirement with the owner's explicit approval; see docs/SIGNING_REVIEW_2026-09-20.md. This approves only the pinned certificate, not release readiness."
 }
