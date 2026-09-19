@@ -8,6 +8,11 @@ if ([string]$policy.status -eq 'pending') {
     if (-not [string]::IsNullOrWhiteSpace([string]$policy.sha256)) { throw 'negative fixture failed: pending signing policy must not carry a digest.' }
 } elseif ([string]$policy.status -eq 'approved') {
     if ([string]$policy.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'negative fixture failed: approved signing policy must carry an exact SHA-256 digest.' }
+    $certificatePath = Join-Path $PSScriptRoot 'release-certificate.cer'
+    if (-not (Test-Path -LiteralPath $certificatePath -PathType Leaf)) { throw 'approved signing policy requires the reviewed public DER certificate.' }
+    if ((Get-FileHash -LiteralPath $certificatePath -Algorithm SHA256).Hash -ne [string]$policy.sha256) {
+        throw 'approved signing policy digest does not match the reviewed public DER certificate.'
+    }
 } else {
     throw 'negative fixture failed: signing policy must be pending or approved.'
 }

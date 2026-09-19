@@ -18,11 +18,21 @@ corrected a user-CA acceptance defect and approved the corrected verifier
 source/provenance. The existing CI payload predates that fix and is not the
 final release candidate.
 
-Production signing is still pending: no release key has been supplied, no
-repository signing secrets or `prerelease` environment were present, and the
-signing certificate policy has not been approved. Finalize that policy before
-selecting a new CI candidate; the candidate-to-tag diff permits only the two
-release evidence JSON files. Exact final-candidate physical checks, a fresh
+The trust correction passed all three checks in
+[CI run 35452448724](https://github.com/yunhyok/codex-usage-ring-android/actions/runs/35452448724)
+and merged through PR #5; the merged tree matches the tested head.
+
+The owner then approved the one-time local key bootstrap and the replacement
+certificate review criterion: owner approval, independent AI technical review,
+and coordinator verification. The [certificate review](SIGNING_REVIEW_2026-09-20.md)
+records the approved public certificate. Its encrypted local backup passed a
+restore/key check; the four signing secrets are registered only in the
+`prerelease` environment, restricted to tag `v0.1.0`. Independent external
+recovery backup and production APK signing remain pending.
+
+Select a successful CI candidate containing this finalized policy; the
+candidate-to-tag diff permits only the two release evidence JSON files.
+Exact final-candidate physical checks, a fresh
 candidate-bound natural-refresh baseline, and the remaining lifecycle matrix
 are still required. Existing login, app data and widgets remain preserved.
 
