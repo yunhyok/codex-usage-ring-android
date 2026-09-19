@@ -103,6 +103,13 @@ android.sourceSets.getByName("native").apply {
     java.directories.add(rustlsVerifierSourceDir.absolutePath)
 }
 
+// Exercise the exact Android verifier on disposable x86 emulators without
+// loading the ARM64 runtime. These sources belong only to the mock test APK.
+android.sourceSets.getByName("androidTestMock").apply {
+    kotlin.directories.add(rustlsVerifierSourceDir.absolutePath)
+    java.directories.add(rustlsVerifierSourceDir.absolutePath)
+}
+
 val verifyRustlsVerifierSource = tasks.register("verifyRustlsPlatformVerifierSource") {
     val sourceFile = rustlsVerifierSourceDir.resolve("org/rustls/platformverifier/CertificateVerifier.kt")
     val buildConfigFile = rustlsVerifierSourceDir.resolve("org/rustls/platformverifier/BuildConfig.java")
@@ -111,7 +118,7 @@ val verifyRustlsVerifierSource = tasks.register("verifyRustlsPlatformVerifierSou
         val source = sourceFile.readText()
         val sha256 = MessageDigest.getInstance("SHA-256").digest(sourceFile.readBytes())
             .joinToString("") { byte -> "%02x".format(byte) }
-        check(sha256 == "ff38c72887aaabe9c54b582777109a70c29b258c47c347af37a65fe0970635e7") {
+        check(sha256 == "0a345c5237f7d6c9d11f2709c520a4969b4753f22e3f3e134f8248ab80224920") {
             "Vendored CertificateVerifier.kt hash changed; review provenance and update only with an explicit source adaptation."
         }
         val buildConfig = buildConfigFile.readText()

@@ -1,5 +1,37 @@
 # Validation status
 
+## Latest follow-up — 2026-09-20
+
+The preserved local adaptive candidate passed the gated natural-auth refresh
+test after its private 2026-09-12 baseline, plus authenticated usage read,
+widget binding/resize metadata and unique active refresh scheduling (4 tests
+total). The installed APK hash remained unchanged; the temporary test package
+was removed. This proves the recorded local candidate's marker, not continuous
+background execution or a future CI candidate's natural-refresh result.
+
+Release preparation independently verified the successful main CI
+[run 34700630404](https://github.com/yunhyok/codex-usage-ring-android/actions/runs/34700630404):
+ARM64 APK hashes, deterministic native-library strip derivation, manifest
+permissions, 328-component SBOM license policy and sign-only test derivatives.
+The [trust-policy review](TRUST_POLICY_REVIEW_2026-09-20.md) then found and
+corrected a user-CA acceptance defect and approved the corrected verifier
+source/provenance. The existing CI payload predates that fix and is not the
+final release candidate.
+
+Production signing is still pending: no release key has been supplied, no
+repository signing secrets or `prerelease` environment were present, and the
+signing certificate policy has not been approved. Finalize that policy before
+selecting a new CI candidate; the candidate-to-tag diff permits only the two
+release evidence JSON files. Exact final-candidate physical checks, a fresh
+candidate-bound natural-refresh baseline, and the remaining lifecycle matrix
+are still required. Existing login, app data and widgets remain preserved.
+
+`release_ready` remains **false**. Local reports are under
+`app/build/reports/followup-20260920` and
+`app/build/reports/release-prep-20260920`.
+
+## Historical evidence
+
 The [2026-09-08 source review](CODE_REVIEW_2026-09-08.md) fixes the 1×1 widget,
 contrast and refresh-path defects. The subsequent
 [physical-device follow-up](DEVICE_FOLLOWUP_2026-09-08.md) confirms a
