@@ -32,7 +32,7 @@ object UsageWorkScheduler {
     private val scheduleMutex = Mutex()
 
     enum class RefreshInterval(val minutes: Int) {
-        ADAPTIVE(10), THREE(3), FIVE(5), TEN(10), FIFTEEN(15), THIRTY(30);
+        ADAPTIVE(ADAPTIVE_MAX_MINUTES), THREE(3), FIVE(5), TEN(10), FIFTEEN(15), THIRTY(30);
 
         val storedValue: Int get() = if (this == ADAPTIVE) 0 else minutes
 
@@ -96,8 +96,15 @@ object UsageWorkScheduler {
             validAdaptiveMinutes(preferences[adaptiveMinutesKey])
         } else mode.minutes
         val manager = WorkManager.getInstance(context)
+        val pending = manager.getWorkInfosForUniqueWorkFlow(UNIQUE_NAME).first()
+            .filter { !it.state.isFinished }.singleOrNull()
+        val shortenLegacyAdaptive = mode == RefreshInterval.ADAPTIVE &&
+            pending?.state == WorkInfo.State.ENQUEUED &&
+            pending.initialDelayMillis > TimeUnit.MINUTES.toMillis(ADAPTIVE_MAX_MINUTES.toLong()) &&
+            pending.nextScheduleTimeMillis - System.currentTimeMillis() > TimeUnit.MINUTES.toMillis(minutes.toLong())
         // KEEP preserves the due time when the app opens or boot restoration repeats.
-        manager.enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.KEEP, request(minutes)).await()
+        val policy = if (shortenLegacyAdaptive) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+        manager.enqueueUniqueWork(UNIQUE_NAME, policy, request(minutes)).await()
         // Queue the replacement first, including when an old periodic worker migrates itself.
         manager.cancelUniqueWork(LEGACY_NAME).await()
     }

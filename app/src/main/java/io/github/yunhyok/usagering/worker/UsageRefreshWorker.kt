@@ -39,7 +39,7 @@ class UsageRefreshWorker(context: Context, params: WorkerParameters) : Coroutine
             if (inputData.getBoolean(UsageWorkScheduler.SCHEDULED, false)) {
                 UsageWorkScheduler.completeScheduledRun(
                     applicationContext, id,
-                    inputData.getInt(UsageWorkScheduler.INTERVAL_MINUTES, 10), previous,
+                    inputData.getInt(UsageWorkScheduler.INTERVAL_MINUTES, ADAPTIVE_MAX_MINUTES), previous,
                     snapshot.takeIf { succeeded },
                 )
             } else {

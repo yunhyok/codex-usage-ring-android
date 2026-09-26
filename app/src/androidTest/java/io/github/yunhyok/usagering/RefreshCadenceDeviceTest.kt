@@ -67,8 +67,8 @@ class RefreshCadenceDeviceTest {
         try {
             // Only the initial test request skips its delay. The real worker constructs each successor.
             for ((current, expected, changed) in listOf(
-                Triple(10, 5, true), Triple(5, 3, true), Triple(3, 1, true), Triple(1, 1, true),
-                Triple(1, 3, false), Triple(3, 5, false), Triple(5, 10, false), Triple(10, 10, false),
+                Triple(10, 1, true), Triple(5, 1, true), Triple(3, 1, true), Triple(2, 1, true), Triple(1, 1, true),
+                Triple(1, 2, false), Triple(2, 3, false), Triple(3, 3, false), Triple(10, 3, false),
             )) {
                 repository.scenario = Scenario.TEN
                 repository.refresh()
@@ -98,6 +98,30 @@ class RefreshCadenceDeviceTest {
         } finally {
             repository.scenario = original
             repository.refresh()
+            UsageWorkScheduler.setInterval(context, RefreshInterval.ADAPTIVE)
+        }
+    }
+
+    @Test fun restoringAdaptiveShortensLegacyWaitingWorkOnce() = runBlocking {
+        assumeTrue(BuildConfig.FLAVOR == "mock")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val manager = WorkManager.getInstance(context)
+        UsageWorkScheduler.setInterval(context, RefreshInterval.ADAPTIVE)
+        try {
+            for (oldMinutes in listOf(5, 10)) {
+                val old = OneTimeWorkRequestBuilder<UsageRefreshWorker>()
+                    .setInitialDelay(oldMinutes.toLong(), TimeUnit.MINUTES)
+                    .setInputData(workDataOf(UsageWorkScheduler.SCHEDULED to true, UsageWorkScheduler.INTERVAL_MINUTES to oldMinutes))
+                    .build()
+                manager.enqueueUniqueWork(UsageWorkScheduler.UNIQUE_NAME, ExistingWorkPolicy.REPLACE, old).await()
+                UsageWorkScheduler.schedule(context)
+                val migrated = active(manager).single()
+                assertFalse(old.id == migrated.id)
+                assertEquals(180_000L, migrated.initialDelayMillis)
+                UsageWorkScheduler.schedule(context)
+                assertEquals(migrated.id, active(manager).single().id)
+            }
+        } finally {
             UsageWorkScheduler.setInterval(context, RefreshInterval.ADAPTIVE)
         }
     }
