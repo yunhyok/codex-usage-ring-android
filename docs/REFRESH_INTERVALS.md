@@ -4,12 +4,13 @@ Settings offers adaptive refresh (the default) and fixed 3, 5, 10, 15 or 30
 minute intervals. Previously saved 15/30 minute choices are preserved; the
 removed 60 minute choice becomes 30 minutes. An unset preference selects adaptive.
 
-Adaptive refresh starts at 10 minutes. After a successful scheduled read, a
-change in either usage percentage selects the next shorter interval:
-`10 -> 5 -> 3 -> 1`. Unchanged readings select the next longer interval:
-`1 -> 3 -> 5 -> 10`. Changes below one percentage point and decreases after a
+Adaptive refresh starts at 3 minutes. After a successful scheduled read, a
+change in either usage percentage immediately selects 1 minute, including
+when migrating an old 5 or 10 minute adaptive request. Unchanged readings
+select the next longer interval: `1 -> 2 -> 3`, capped at 3 minutes.
+Changes below one percentage point and decreases after a
 quota reset count. Capture times and reset-time metadata alone do not count.
-Missing first observations start at 10 minutes. Errors never shorten the interval;
+Missing first observations start at 3 minutes. Errors back off within the new range;
 one quick retry is retained before the next regular attempt is scheduled.
 
 These are requested delays, not exact deadlines. Android periodic WorkManager
@@ -19,7 +20,10 @@ and job quotas can delay execution. No exact alarm, permanent foreground service
 or battery exemption is requested. See [Android's work-request guidance](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work).
 
 The old periodic job is retired when the app restores scheduling or a legacy
-worker completes. Reopening the app keeps the pending due time. Changing the
+worker completes. Restoring adaptive scheduling shortens an old 5/10 minute
+pending request only if its due time is farther away than the new delay; work
+already running or due sooner is preserved. Otherwise reopening the app keeps
+the pending due time. Fixed interval preferences remain unchanged. Changing the
 setting replaces the existing chain; a cancelled old worker cannot reinsert its
 previous interval. Manual refresh remains separate from the scheduled chain.
 

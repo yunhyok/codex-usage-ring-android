@@ -27,7 +27,7 @@
     <string name="refresh_now">Refresh now</string>
     <string name="add_widget">Add home-screen widget</string>
     <string name="refresh_interval">Refresh interval: %1$s</string>
-    <string name="refresh_interval_description">Adaptive: shorten refreshes when usage changes (10 → 5 → 3 → 1 min) and grow them when unchanged, up to 10 min. Android power management may delay scheduled refreshes.</string>
+    <string name="refresh_interval_description">Adaptive: start at 3 min, switch directly to 1 min when usage changes, and slow down to 2 then 3 min when unchanged. Android power management may delay scheduled refreshes.</string>
     <string name="refresh_interval_adaptive">Adaptive</string>
     <string name="refresh_interval_minutes">%1$d min</string>
     <string name="notifications_toggle">Notifications enabled</string>

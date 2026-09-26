@@ -14,32 +14,42 @@ class RefreshCadenceTest {
     )
 
     @Test fun activitySpeedsUpAndInactivitySlowsDownWithoutCrossingBounds() {
-        var minutes = 10
-        for (expected in listOf(5, 3, 1, 1)) {
+        var minutes = 3
+        for (expected in listOf(1, 1, 1)) {
             minutes = nextAdaptiveMinutes(minutes, snapshot(), snapshot(used = 11.0))
             assertEquals(expected, minutes)
         }
-        for (expected in listOf(3, 5, 10, 10)) {
+        for (expected in listOf(2, 3, 3)) {
             minutes = nextAdaptiveMinutes(minutes, snapshot(), snapshot(captured = 999L))
             assertEquals(expected, minutes)
         }
     }
 
     @Test fun eitherWindowAndResetDecreasesCountAsUsageChanges() {
-        assertEquals(5, nextAdaptiveMinutes(10, snapshot(), snapshot(seven = 21.0)))
-        assertEquals(5, nextAdaptiveMinutes(10, snapshot(), snapshot(used = 0.0)))
-        assertEquals(5, nextAdaptiveMinutes(10, snapshot(), snapshot(used = 10.1)))
+        assertEquals(1, nextAdaptiveMinutes(3, snapshot(), snapshot(seven = 21.0)))
+        assertEquals(1, nextAdaptiveMinutes(3, snapshot(), snapshot(used = 0.0)))
+        assertEquals(1, nextAdaptiveMinutes(3, snapshot(), snapshot(used = 10.1)))
         val metadataOnly = snapshot().copy(fiveHour = UsageWindowData(10.0, resetAtEpochMillis = 123L))
-        assertEquals(10, nextAdaptiveMinutes(5, snapshot(), metadataOnly))
+        assertEquals(3, nextAdaptiveMinutes(2, snapshot(), metadataOnly))
     }
 
     @Test fun unknownAndFailedReadsNeverAcceleratePolling() {
-        assertEquals(10, nextAdaptiveMinutes(1, null, snapshot()))
-        assertEquals(5, nextAdaptiveMinutes(3, snapshot(), null))
-        assertEquals(5, nextAdaptiveMinutes(3, snapshot(), snapshot(used = 50.0).copy(error = true)))
-        assertEquals(10, nextAdaptiveMinutes(5, snapshot(), snapshot(used = Double.NaN)))
-        assertEquals(10, nextAdaptiveMinutes(5, snapshot(), snapshot().copy(fiveHour = null)))
-        assertEquals(10, nextAdaptiveMinutes(60, snapshot(), snapshot()))
+        assertEquals(3, nextAdaptiveMinutes(1, null, snapshot()))
+        assertEquals(2, nextAdaptiveMinutes(1, snapshot(), null))
+        assertEquals(3, nextAdaptiveMinutes(2, snapshot(), snapshot(used = 50.0).copy(error = true)))
+        assertEquals(3, nextAdaptiveMinutes(3, snapshot(), snapshot(used = Double.NaN)))
+        assertEquals(3, nextAdaptiveMinutes(3, snapshot(), snapshot().copy(fiveHour = null)))
+        assertEquals(3, nextAdaptiveMinutes(60, snapshot(), snapshot()))
+    }
+
+    @Test fun savedAndQueuedLegacyAdaptiveIntervalsUseTheNewBounds() {
+        assertEquals(3, RefreshInterval.ADAPTIVE.minutes)
+        for (old in listOf(null, 5, 10, 60, -1)) {
+            assertEquals(3, validAdaptiveMinutes(old))
+        }
+        for (current in listOf(1, 2, 3, 5, 10)) {
+            assertEquals(1, nextAdaptiveMinutes(current, snapshot(), snapshot(used = 11.0)))
+        }
     }
 
     @Test fun defaultAndLegacySettingsMigrateWithoutReintroducingSixtyMinutes() {
